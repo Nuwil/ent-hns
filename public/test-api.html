@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ENT Clinic API Tester</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1e1e1e; color: #e0e0e0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #4CAF50; margin-bottom: 30px; }
+        .section { background: #2d2d2d; border-radius: 8px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #4CAF50; }
+        .section h2 { color: #4CAF50; margin-bottom: 15px; font-size: 18px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #b0b0b0; font-weight: 500; }
+        input, textarea, select { width: 100%; padding: 10px; background: #1e1e1e; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-family: monospace; }
+        input:focus, textarea:focus { outline: none; border-color: #4CAF50; background: #252525; }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 10px; }
+        button:hover { background: #45a049; }
+        button.secondary { background: #666; }
+        button.secondary:hover { background: #777; }
+        .response { background: #1a1a1a; border: 1px solid #444; border-radius: 4px; padding: 15px; margin-top: 15px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 13px; }
+        .response.success { border-color: #4CAF50; color: #81c784; }
+        .response.error { border-color: #f44336; color: #e57373; }
+        .response.info { border-color: #2196F3; color: #64b5f6; }
+        .endpoints { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
+        .endpoint { background: #1a1a1a; border: 1px solid #444; border-radius: 4px; padding: 12px; }
+        .endpoint-method { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 12px; font-weight: bold; margin-right: 8px; }
+        .endpoint-method.get { background: #2196F3; color: white; }
+        .endpoint-method.post { background: #4CAF50; color: white; }
+        .endpoint-method.put { background: #FF9800; color: white; }
+        .endpoint-method.delete { background: #f44336; color: white; }
+        .endpoint-url { font-family: monospace; font-size: 13px; color: #64b5f6; word-break: break-all; }
+        .tabs { display: flex; gap: 0; margin-bottom: 20px; }
+        .tab { padding: 12px 20px; background: #1a1a1a; border: 1px solid #444; cursor: pointer; border-radius: 4px 4px 0 0; }
+        .tab.active { background: #2d2d2d; border-bottom: 3px solid #4CAF50; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏥 ENT Clinic API Tester</h1>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('auth')">Authentication</div>
+            <div class="tab" onclick="switchTab('patients')">Patients</div>
+            <div class="tab" onclick="switchTab('appointments')">Appointments</div>
+            <div class="tab" onclick="switchTab('medicines')">Medicines</div>
+            <div class="tab" onclick="switchTab('custom')">Custom Request</div>
+        </div>
+
+        <!-- Auth Tab -->
+        <div id="auth" class="tab-content active">
+            <div class="section">
+                <h2>Login</h2>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="login-username" value="admin">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" value="password">
+                </div>
+                <button onclick="makeRequest('POST', '/api/auth/login', {username: document.getElementById('login-username').value, password: document.getElementById('login-password').value})">Login</button>
+                <div id="auth-response" class="response" style="display:none;"></div>
+            </div>
+
+            <div class="section">
+                <h2>Get Current User</h2>
+                <button onclick="makeRequest('GET', '/api/auth/me')">Get Me</button>
+                <div id="me-response" class="response" style="display:none;"></div>
+            </div>
+
+            <div class="section">
+                <h2>Logout</h2>
+                <button onclick="makeRequest('POST', '/api/auth/logout')">Logout</button>
+                <div id="logout-response" class="response" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Patients Tab -->
+        <div id="patients" class="tab-content">
+            <div class="section">
+                <h2>Get All Patients</h2>
+                <button onclick="makeRequest('GET', '/api/patients')">Fetch Patients</button>
+                <div id="patients-response" class="response" style="display:none;"></div>
+            </div>
+
+            <div class="section">
+                <h2>Get Patient by ID</h2>
+                <div class="form-group">
+                    <label>Patient ID</label>
+                    <input type="number" id="patient-id" value="1">
+                </div>
+                <button onclick="makeRequest('GET', '/api/patients/' + document.getElementById('patient-id').value)">Get Patient</button>
+                <div id="patient-response" class="response" style="display:none;"></div>
+            </div>
+
+            <div class="section">
+                <h2>Create Patient</h2>
+                <div class="form-group">
+                    <label>JSON Body</label>
+                    <textarea id="patient-create-body" rows="8">{
+  "first_name": "John",
+  "last_name": "Doe",
+  "date_of_birth": "1990-01-15",
+  "email": "john@example.com",
+  "phone": "1234567890",
+  "gender": "M",
+  "address": "123 Main St",
+  "medical_history": "None"
+}</textarea>
+                </div>
+                <button onclick="makeRequest('POST', '/api/patients', JSON.parse(document.getElementById('patient-create-body').value))">Create Patient</button>
+                <div id="patient-create-response" class="response" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Appointments Tab -->
+        <div id="appointments" class="tab-content">
+            <div class="section">
+                <h2>Get All Appointments</h2>
+                <button onclick="makeRequest('GET', '/api/appointments')">Fetch Appointments</button>
+                <div id="appointments-response" class="response" style="display:none;"></div>
+            </div>
+
+            <div class="section">
+                <h2>Get Doctors</h2>
+                <button onclick="makeRequest('GET', '/api/appointments/doctors')">Fetch Doctors</button>
+                <div id="doctors-response" class="response" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Medicines Tab -->
+        <div id="medicines" class="tab-content">
+            <div class="section">
+                <h2>Get All Medicines</h2>
+                <button onclick="makeRequest('GET', '/api/medicines')">Fetch Medicines</button>
+                <div id="medicines-response" class="response" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Custom Request Tab -->
+        <div id="custom" class="tab-content">
+            <div class="section">
+                <h2>Custom API Request</h2>
+                <div class="form-group">
+                    <label>Method</label>
+                    <select id="custom-method">
+                        <option>GET</option>
+                        <option>POST</option>
+                        <option>PUT</option>
+                        <option>PATCH</option>
+                        <option>DELETE</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Endpoint (e.g., /api/patients)</label>
+                    <input type="text" id="custom-endpoint" value="/api/patients" placeholder="/api/...">
+                </div>
+                <div class="form-group">
+                    <label>Request Body (JSON)</label>
+                    <textarea id="custom-body" rows="8" placeholder="{&#10;  &#34;key&#34;: &#34;value&#34;&#10;}"></textarea>
+                </div>
+                <button onclick="customRequest()">Send Request</button>
+                <button class="secondary" onclick="document.getElementById('custom-body').value = ''">Clear</button>
+                <div id="custom-response" class="response" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Available Endpoints -->
+        <div class="section">
+            <h2>Available Endpoints</h2>
+            <div class="endpoints">
+                <div class="endpoint">
+                    <span class="endpoint-method post">POST</span>
+                    <div class="endpoint-url">/api/auth/login</div>
+                </div>
+                <div class="endpoint">
+                    <span class="endpoint-method get">GET</span>
+                    <div class="endpoint-url">/api/auth/me</div>
+                </div>
+                <div class="endpoint">
+                    <span class="endpoint-method post">POST</span>
+                    <div class="endpoint-url">/api/auth/logout</div>
+                </div>
+                <div class="endpoint">
+                    <span class="endpoint-method get">GET</span>
+                    <div class="endpoint-url">/api/patients</div>
+                </div>
+                <div class="endpoint">
+                    <span class="endpoint-method post">POST</span>
+                    <div class="endpoint-url">/api/patients</div>
+                </div>
+                <div class="endpoint">
+                    <span class="endpoint-method get">GET</span>
+                    <div class="endpoint-url">/api/appointments</div>
+                </div>
+                <div class="endpoint">
+                    <span class="endpoint-method post">POST</span>
+                    <div class="endpoint-url">/api/appointments</div>
+                </div>
+                <div class="endpoint">
+                    <span class="endpoint-method get">GET</span>
+                    <div class="endpoint-url">/api/medicines</div>
+                </div>
+                <div class="endpoint">
+                    <span class="endpoint-method get">GET</span>
+                    <div class="endpoint-url">/api/analytics/dashboard</div>
+                </div>
+                <div class="endpoint">
+                    <span class="endpoint-method get">GET</span>
+                    <div class="endpoint-url">/api/visits</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://127.0.0.1:8000';
+        let responseElementId = null;
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        async function makeRequest(method, endpoint, body = null) {
+            const responseId = method + endpoint.replace(/[^a-z0-9]/gi, '') + '-response';
+            responseElementId = responseId;
+            
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                credentials: 'include'
+            };
+
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            const responseEl = document.getElementById(responseId);
+            responseEl.style.display = 'block';
+            responseEl.innerHTML = '<span style="color: #888;">Loading...</span>';
+
+            try {
+                const response = await fetch(API_BASE + endpoint, options);
+                const data = await response.json();
+                
+                responseEl.textContent = JSON.stringify(data, null, 2);
+                responseEl.classList.remove('error', 'success', 'info');
+                responseEl.classList.add(response.ok ? 'success' : 'error');
+            } catch (error) {
+                responseEl.textContent = 'Error: ' + error.message;
+                responseEl.classList.remove('success', 'info');
+                responseEl.classList.add('error');
+            }
+        }
+
+        function customRequest() {
+            const method = document.getElementById('custom-method').value;
+            const endpoint = document.getElementById('custom-endpoint').value;
+            const bodyText = document.getElementById('custom-body').value.trim();
+            let body = null;
+
+            if (bodyText) {
+                try {
+                    body = JSON.parse(bodyText);
+                } catch (e) {
+                    alert('Invalid JSON: ' + e.message);
+                    return;
+                }
+            }
+
+            responseElementId = 'custom-response';
+            makeRequest(method, endpoint, body);
+        }
+    </script>
+</body>
+</html>

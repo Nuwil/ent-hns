@@ -24,11 +24,14 @@ class UserFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => fake()->name(),
+            // fields matching the customized users table
+            'username' => fake()->unique()->userName(),
+            'full_name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
-            'email_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password'),
-            'remember_token' => Str::random(10),
+            // note: user table does not have email_verified_at field in custom schema
+            'password_hash' => static::$password ??= Hash::make('password'),
+            'role' => 'staff',
+            'is_active' => true,
         ];
     }
 
