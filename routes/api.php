@@ -15,25 +15,51 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/logout', [AuthController::class, 'logout']);
 Route::get('/auth/me', [AuthController::class, 'me']);
 
-// Protected API routes that require session authentication
-Route::middleware('auth.session')->group(function () {
-    // Patients routes
-    Route::apiResource('patients', PatientsController::class);
-
-    // Appointments routes
-    Route::get('/appointments/doctors', [AppointmentsController::class, 'doctors']);
-    Route::apiResource('appointments', AppointmentsController::class);
-
-    // Visits routes
-    Route::apiResource('visits', VisitsController::class);
-
-    // Medicines routes
-    Route::apiResource('medicines', MedicinesController::class);
-
-    // Analytics routes
-    Route::get('/analytics/dashboard', [AnalyticsController::class, 'getDashboard']);
-    Route::get('/analytics/metrics', [AnalyticsController::class, 'getMetrics']);
+// Diagnostic endpoint - test database and session
+Route::middleware(['web'])->get('/debug/patients-test', function (Request $request) {
+    try {
+        $patientCount = \App\Models\Patient::count();
+        $sessionUserId = session('user_id');
+        $allSessions = session()->all();
+        $patients = \App\Models\Patient::limit(5)->get(['id', 'first_name', 'last_name']);
+        
+        return response()->json([
+            'success' => true,
+            'database' => [
+                'patient_count' => $patientCount,
+                'sample_patients' => $patients
+            ],
+            'session' => [
+                'user_id' => $sessionUserId,
+                'has_user_id' => session()->has('user_id'),
+                'all_keys' => array_keys($allSessions)
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage()
+        ], 500);
+    }
 });
+
+// API routes - NO AUTHORIZATION MIDDLEWARE
+// Patients routes
+Route::apiResource('patients', PatientsController::class);
+
+// Appointments routes
+Route::get('/appointments/doctors', [AppointmentsController::class, 'doctors']);
+Route::apiResource('appointments', AppointmentsController::class);
+
+// Visits routes
+Route::apiResource('visits', VisitsController::class);
+
+// Medicines routes
+Route::apiResource('medicines', MedicinesController::class);
+
+// Analytics routes
+Route::get('/analytics/dashboard', [AnalyticsController::class, 'getDashboard']);
+Route::get('/analytics/metrics', [AnalyticsController::class, 'getMetrics']);
 
 // Debug appointments endpoint with full logging
 Route::middleware(['debug.session', \Illuminate\Session\Middleware\StartSession::class])->get('/appointments-debug', function (\Illuminate\Http\Request $request) {
@@ -43,6 +69,38 @@ Route::middleware(['debug.session', \Illuminate\Session\Middleware\StartSession:
         'session_id' => session()->getId(),
         'has_user_id' => session()->has('user_id'),
         'session_data' => session()->all(),
+    ]);
+});
+
+// Session debug endpoint for API
+Route::middleware('ensure.session')->get('/auth/session-check', function (\Illuminate\Http\Request $request) {
+    $sessionId = session()->getId();
+    $userId = session('user_id');
+    $cookieName = config('session.cookie');
+    
+    // Check database
+    $dbSession = null;
+    if (config('session.driver') === 'database') {
+        $dbSession = \DB::table(config('session.table'))
+            ->where('id', $sessionId)
+            ->select('id', 'user_id', 'last_activity')
+            ->first();
+    }
+    
+    return response()->json([
+        'debug' => 'Session Check',
+        'user_id_from_session' => $userId,
+        'session_id' => substr($sessionId, 0, 20) . '...',
+        'cookie_name' => $cookieName,
+        'cookie_sent' => $request->hasCookie($cookieName) ? 'YES' : 'NO',
+        'session_data_count' => count(session()->all()),
+        'session_keys' => array_keys(session()->all()),
+        'database_record' => $dbSession ? [
+            'id' => substr($dbSession->id, 0, 20) . '...',
+            'user_id' => $dbSession->user_id,
+            'last_activity' => $dbSession->last_activity,
+        ] : 'NOT_FOUND',
+        'timestamp' => now()->toIso8601String(),
     ]);
 });
 

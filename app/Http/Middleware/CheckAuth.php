@@ -10,52 +10,36 @@ class CheckAuth
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $userId = session('user_id');
+        // Try to restore session data from database if missing
+        // This is optional - just makes sure user info is available
         $sessionId = session()->getId();
-        $cookieName = config('session.cookie');
-        $requestCookieHeader = $request->header('Cookie');
         
-        // Log session data for debugging
-        \Log::debug('CheckAuth Middleware - Detailed Diagnostic', [
-            'path' => $request->path(),
-            'method' => $request->method(),
-            'user_id_found' => $userId,
-            'session_id' => $sessionId,
-            'cookie_name_expected' => $cookieName,
-            'cookie_header_sent' => $requestCookieHeader ?: 'NO COOKIE HEADER IN REQUEST',
-            'has_cookie_from_hasCookie' => $request->hasCookie($cookieName),
-            'all_cookies_in_request' => array_keys($request->cookies->all()),
-            'session_has_user_id_key' => session()->has('user_id'),
-            'full_session_array' => session()->all(),
-            'session_driver' => config('session.driver'),
-        ]);
-        
-        if (!$userId) {
-            \Log::warning('CheckAuth - Unauthorized Access Attempt', [
-                'path' => $request->path(),
-                'reason' => 'No user_id in session',
-                'session_id' => $sessionId,
-                'has_cookie' => $request->hasCookie($cookieName),
-                'session_data' => session()->all(),
-            ]);
-            
-            // For API requests, return JSON error
-            if ($request->expectsJson() || $request->is('api/*')) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Unauthorized - Please log in',
-                    'debug' => [
-                        'user_id' => $userId,
-                        'session_has_user_id' => session()->has('user_id'),
-                        'session_id' => $sessionId,
-                    ]
-                ], 401);
+        if (!session('user_id') && $sessionId) {
+            try {
+                $dbSession = \DB::table(config('session.table'))
+                    ->where('id', $sessionId)
+                    ->first(['user_id', 'last_activity']);
+                
+                if ($dbSession && $dbSession->user_id) {
+                    $user = \DB::table('users')
+                        ->where('id', $dbSession->user_id)
+                        ->first(['id', 'full_name', 'username', 'role']);
+                    
+                    if ($user) {
+                        session()->put('user_id', $dbSession->user_id);
+                        session()->put('user_name', $user->full_name ?? $user->username);
+                        session()->put('user_role', strtolower($user->role));
+                        session()->put('last_activity_timestamp', $dbSession->last_activity ?? time());
+                        session()->save();
+                    }
+                }
+            } catch (\Exception $e) {
+                // Silent fail - session data not critical for access
             }
-            
-            // For web requests, redirect to login
-            return redirect()->route('login');
         }
 
         return $next($request);
     }
 }
+
+

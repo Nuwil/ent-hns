@@ -9,31 +9,26 @@ class Appointment extends Model
 {
     use HasFactory;
 
+    // Status constants
+    const STATUS_PENDING  = 'pending';
+    const STATUS_ACCEPTED = 'accepted';
+    const STATUS_CANCELLED = 'cancelled';
+    const STATUS_COMPLETED = 'completed';
+
     protected $fillable = [
         'patient_id',
         'doctor_id',
-        'appointment_date',
-        'appointment_type',
-        'duration',
+        'scheduled_at',
+        'reason',
         'status',
         'notes',
-        'blood_pressure',
-        'temperature',
-        'pulse_rate',
-        'respiratory_rate',
-        'oxygen_saturation',
-        'rescheduled_from',
-        'rescheduled_to',
-        'cancellation_reason',
     ];
 
     protected $casts = [
-        'appointment_date' => 'datetime',
-        'rescheduled_from' => 'datetime',
-        'rescheduled_to' => 'datetime',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'scheduled_at' => 'datetime',
     ];
+
+    // ── Relationships ─────────────────────────────────────────────
 
     public function patient()
     {
@@ -45,8 +40,43 @@ class Appointment extends Model
         return $this->belongsTo(User::class, 'doctor_id');
     }
 
-    public function visits()
+    // ── Scopes ────────────────────────────────────────────────────
+
+    public function scopePending($query)
     {
-        return $this->hasMany(PatientVisit::class);
+        return $query->where('status', self::STATUS_PENDING);
+    }
+
+    public function scopeAccepted($query)
+    {
+        return $query->where('status', self::STATUS_ACCEPTED);
+    }
+
+    public function scopeToday($query)
+    {
+        return $query->whereDate('scheduled_at', today());
+    }
+
+    public function scopeUpcoming($query)
+    {
+        return $query->where('scheduled_at', '>=', now())->orderBy('scheduled_at');
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────
+
+    public function isPending(): bool   { return $this->status === self::STATUS_PENDING; }
+    public function isAccepted(): bool  { return $this->status === self::STATUS_ACCEPTED; }
+    public function isCancelled(): bool { return $this->status === self::STATUS_CANCELLED; }
+    public function isCompleted(): bool { return $this->status === self::STATUS_COMPLETED; }
+
+    public function statusBadgeClass(): string
+    {
+        return match($this->status) {
+            self::STATUS_PENDING   => 'badge-warning',
+            self::STATUS_ACCEPTED  => 'badge-info',
+            self::STATUS_COMPLETED => 'badge-success',
+            self::STATUS_CANCELLED => 'badge-danger',
+            default                => 'badge-secondary',
+        };
     }
 }

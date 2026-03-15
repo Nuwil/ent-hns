@@ -31,42 +31,54 @@ class WebAuthController extends Controller
 
         \Log::info('User found and password correct', ['user_id' => $user->id, 'username' => $user->username]);
         
-        // Don't regenerate session - it might be breaking persistence
-        // Just set the user data
+        // Regenerate session ID for security, but keep the session data
+        $request->session()->regenerate();
+        
+        // Store user data in session
         $request->session()->put([
             'user_id' => $user->id,
             'user_name' => $user->full_name ?? $user->username,
             'user_role' => strtolower($user->role),
+            'last_activity_timestamp' => time(),  // CRITICAL: Set for CheckSessionTimeout middleware
         ]);
         
-        \Log::info('Session data before save', ['session_all' => $request->session()->all()]);
-        
-        // Save session to database immediately
-        $request->session()->save();
-        
-        \Log::info('Session saved', ['session_id' => $request->session()->getId()]);
-        
-        // Get the session ID
         $sessionId = $request->session()->getId();
         
-        // Verify it was saved to database
-        $dbCheck = \DB::table('sessions')->where('id', $sessionId)->first();
-        \Log::info('Checking database after save', [
+        \Log::info('Session data before save', [
             'session_id' => $sessionId,
-            'found_in_db' => $dbCheck ? 'YES' : 'NO',
-            'db_user_id' => $dbCheck ? $dbCheck->user_id : 'N/A',
+            'session_all' => $request->session()->all(),
         ]);
         
-        // Populate the user_id column in the sessions table
-        $updated = \DB::table('sessions')
-            ->where('id', $sessionId)
-            ->update(['user_id' => $user->id]);
+        // Save session to database immediately and flush handlers
+        $request->session()->save();
         
-        \Log::info('User logged in', [
+        \Log::info('Session saved', [
+            'session_id' => $sessionId,
+            'session_keys' => array_keys($request->session()->all()),
+        ]);
+
+        // CRITICAL: Manually update user_id in database sessions table
+        // Laravel doesn't automatically set this column
+        \DB::table('sessions')->where('id', $sessionId)->update([
+            'user_id' => $user->id,
+            'last_activity' => time(),
+        ]);
+        
+        // Verify it was saved to database
+        $dbSession = \DB::table('sessions')->where('id', $sessionId)->first();
+        
+        \Log::info('Verified session in database', [
+            'session_id' => $sessionId,
+            'found_in_db' => $dbSession ? 'YES' : 'NO',
+            'db_user_id' => $dbSession?->user_id,
+            'payload_length' => strlen($dbSession?->payload ?? ''),
+        ]);
+        
+        \Log::info('User logged in successfully', [
             'user_id' => $user->id,
             'username' => $user->username,
             'session_id' => $sessionId,
-            'session_rows_updated' => $updated,
+            'role' => $user->role,
         ]);
         
         // Redirect to role-specific dashboard

@@ -10,6 +10,9 @@ const ModalManager = {
     if (modal && overlay) {
       overlay.classList.add('active');
       document.body.style.overflow = 'hidden';
+      // Prevent sidebar/main content from disappearing
+      document.body.style.visibility = 'visible';
+      document.body.style.display = 'block';
     }
   },
 
@@ -21,6 +24,8 @@ const ModalManager = {
     if (modal && overlay) {
       overlay.classList.remove('active');
       document.body.style.overflow = 'auto';
+      document.body.style.visibility = 'visible';
+      document.body.style.display = 'block';
     }
   },
 
@@ -30,6 +35,8 @@ const ModalManager = {
       overlay.classList.remove('active');
     });
     document.body.style.overflow = 'auto';
+    document.body.style.visibility = 'visible';
+    document.body.style.display = 'block';
   }
 };
 
@@ -44,6 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (modal) {
         modal.removeAttribute('hidden');
         document.body.style.overflow = 'hidden';
+        document.body.style.visibility = 'visible';
       }
     });
   });
@@ -56,6 +64,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (modal) {
         modal.setAttribute('hidden', '');
         document.body.style.overflow = 'auto';
+        document.body.style.visibility = 'visible';
         const form = modal.querySelector('form');
         if (form) form.reset();
       }
@@ -69,6 +78,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (modal) {
         modal.setAttribute('hidden', '');
         document.body.style.overflow = 'auto';
+        document.body.style.visibility = 'visible';
         const form = modal.querySelector('form');
         if (form) form.reset();
       }
@@ -90,6 +100,7 @@ document.addEventListener('DOMContentLoaded', function() {
           // Fallback for simple modal structure with hidden attribute
           modal.setAttribute('hidden', '');
           document.body.style.overflow = 'auto';
+          document.body.style.visibility = 'visible';
           const form = modal.querySelector('form');
           if (form) form.reset();
         }
@@ -240,6 +251,7 @@ const ApiManager = {
   async request(method, url, data = null) {
     const options = {
       method: method,
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',

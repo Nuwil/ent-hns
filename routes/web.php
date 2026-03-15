@@ -1,80 +1,114 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\WebAuthController;
-use App\Http\Controllers\AdminDashboardController;
-use App\Http\Controllers\DoctorDashboardController;
-use App\Http\Controllers\SecretaryDashboardController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PatientController;
+use App\Http\Controllers\AppointmentController;
+use App\Http\Controllers\VisitController;
+use App\Http\Controllers\AnalyticsController;
+use App\Http\Controllers\SettingsController;
 
-// Public routes
-Route::get('/', function () {
-    return redirect('/login');
+/*
+|--------------------------------------------------------------------------
+| Guest Routes
+|--------------------------------------------------------------------------
+*/
+Route::middleware('guest')->group(function () {
+    Route::get('/', fn() => redirect()->route('login'));
+    Route::get('/login',  [AuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 });
 
-Route::get('/login', [WebAuthController::class, 'showLogin'])->name('login');
-Route::post('/login', [WebAuthController::class, 'login'])->name('login.post');
+/*
+|--------------------------------------------------------------------------
+| Authenticated Routes
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth')->group(function () {
 
-// Debug: test endpoint to manually set session data
-Route::get('/test-session-set', function (\Illuminate\Http\Request $request) {
-    $request->session()->put('user_id', 999);
-    $request->session()->put('test_key', 'test_value');
-    $request->session()->save();
-    
-    $sessionId = $request->session()->getId();
-    
-    // Check if it was saved
-    $dbSession = DB::table('sessions')->where('id', $sessionId)->first();
-    
-    return response()->json([
-        'session_id' => $sessionId,
-        'session_all' => $request->session()->all(),
-        'in_database' => $dbSession ? true : false,
-        'db_payload' => $dbSession ? unserialize(base64_decode($dbSession->payload)) : null,
-    ]);
-});
+    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-// Protected routes - All authenticated users
-Route::middleware(['auth.session'])->group(function () {
-    Route::post('/logout', [WebAuthController::class, 'logout'])->name('logout');
-    Route::get('/dashboard', [WebAuthController::class, 'dashboard'])->name('dashboard');
-});
+    /*
+    |------------------------------------------------------------------
+    | Admin Routes
+    |------------------------------------------------------------------
+    */
+    Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::get('/dashboard', [DashboardController::class, 'admin'])->name('dashboard');
+        Route::get('/settings',  [SettingsController::class, 'index'])->name('settings');
+        Route::post('/settings', [SettingsController::class, 'update'])->name('settings.update');
 
-// Admin routes
-Route::middleware(['auth.session', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
-    Route::get('/dashboard', [AdminDashboardController::class, 'dashboard'])->name('dashboard');
-    Route::get('/settings', [AdminDashboardController::class, 'settings'])->name('settings');
-    // Admin user management routes
-    Route::resource('users', App\Http\Controllers\Admin\UserController::class)->except(['create', 'show']);
-    Route::patch('users/{user}/toggle', [App\Http\Controllers\Admin\UserController::class, 'toggle'])->name('users.toggle');
-});
+        // User account management
+        Route::post('/users',            [SettingsController::class, 'storeUser'])->name('users.store');
+        Route::put('/users/{user}',      [SettingsController::class, 'updateUser'])->name('users.update');
+        Route::delete('/users/{user}',   [SettingsController::class, 'destroyUser'])->name('users.destroy');
+        Route::patch('/users/{user}/toggle', [SettingsController::class, 'toggleUser'])->name('users.toggle');
+    });
 
-// Doctor routes
-Route::middleware(['auth.session', 'role:doctor'])->prefix('doctor')->name('doctor.')->group(function () {
-    Route::get('/dashboard', [DoctorDashboardController::class, 'dashboard'])->name('dashboard');
-    Route::get('/patients', [DoctorDashboardController::class, 'patients'])->name('patients');
-    Route::post('/patients', [DoctorDashboardController::class, 'storePatient'])->name('patients.store');
-    Route::get('/patients/{patient_id}/profile', [DoctorDashboardController::class, 'patientProfile'])->name('patient-profile');
-    Route::get('/patients/{patient_id}/edit', [DoctorDashboardController::class, 'editPatient'])->name('patients.edit');
-    Route::put('/patients/{patient_id}', [DoctorDashboardController::class, 'updatePatient'])->name('patients.update');
-    Route::get('/appointments', [DoctorDashboardController::class, 'appointments'])->name('appointments');
-    Route::get('/appointments/create', [DoctorDashboardController::class, 'createAppointment'])->name('appointments.create');
-    Route::post('/appointments', [DoctorDashboardController::class, 'storeAppointment'])->name('appointments.store');
-    Route::get('/visits/create', [DoctorDashboardController::class, 'createVisit'])->name('visits.create');
-    Route::post('/visits', [DoctorDashboardController::class, 'storeVisit'])->name('visits.store');
-    Route::get('/analytics', [DoctorDashboardController::class, 'analytics'])->name('analytics');
-});
+    /*
+    |------------------------------------------------------------------
+    | Secretary Routes
+    | - Can add patients, book appointments, add intake visits
+    | - CANNOT accept / confirm / cancel appointments
+    | - CANNOT access diagnosis, prescriptions, or SOAP fields
+    |------------------------------------------------------------------
+    */
+    Route::middleware('role:secretary')->prefix('secretary')->name('secretary.')->group(function () {
+        Route::get('/dashboard', [DashboardController::class, 'secretary'])->name('dashboard');
 
-// Secretary routes
-Route::middleware(['auth.session', 'role:secretary'])->prefix('secretary')->name('secretary.')->group(function () {
-    Route::get('/dashboard', [SecretaryDashboardController::class, 'dashboard'])->name('dashboard');
-    Route::get('/patients', [SecretaryDashboardController::class, 'patients'])->name('patients');
-    Route::post('/patients', [SecretaryDashboardController::class, 'storePatient'])->name('patients.store');
-    Route::get('/patients/{patient_id}/profile', [SecretaryDashboardController::class, 'patientProfile'])->name('patient-profile');
-    Route::get('/patients/{patient_id}/edit', [SecretaryDashboardController::class, 'editPatient'])->name('patients.edit');
-    Route::put('/patients/{patient_id}', [SecretaryDashboardController::class, 'updatePatient'])->name('patients.update');
-    Route::get('/appointments', [SecretaryDashboardController::class, 'appointments'])->name('appointments');
-    Route::get('/appointments/create', [SecretaryDashboardController::class, 'createAppointment'])->name('appointments.create');
-    Route::post('/appointments', [SecretaryDashboardController::class, 'storeAppointment'])->name('appointments.store');
-    Route::get('/visits/create', [SecretaryDashboardController::class, 'createVisit'])->name('visits.create');
-    Route::post('/visits', [SecretaryDashboardController::class, 'storeVisit'])->name('visits.store');
+        // Patient management
+        Route::get('/patients',                [PatientController::class, 'index'])->name('patients.index');
+        Route::get('/patients/create',         [PatientController::class, 'create'])->name('patients.create');
+        Route::post('/patients',               [PatientController::class, 'store'])->name('patients.store');
+        Route::get('/patients/{patient}',      [PatientController::class, 'show'])->name('patients.show');
+        Route::get('/patients/{patient}/edit', [PatientController::class, 'edit'])->name('patients.edit');
+        Route::put('/patients/{patient}',      [PatientController::class, 'update'])->name('patients.update');
+        Route::delete('/patients/{patient}',   [PatientController::class, 'destroy'])->name('patients.destroy');
+
+        // Appointments — book only, NO confirm/cancel
+        Route::get('/appointments',    [AppointmentController::class, 'index'])->name('appointments.index');
+        Route::post('/appointments',   [AppointmentController::class, 'store'])->name('appointments.store');
+
+        // Visits — secretary can only store limited intake data (chief complaint from list, vitals)
+        Route::post('/patients/{patient}/visits',          [VisitController::class, 'storeIntake'])->name('visits.store');
+        Route::put('/patients/{patient}/visits/{visit}',   [VisitController::class, 'updateIntake'])->name('visits.update');
+    });
+
+    /*
+    |------------------------------------------------------------------
+    | Doctor Routes
+    | - Full appointment control (confirm, complete, cancel)
+    | - Full SOAP clinical documentation
+    | - Analytics
+    |------------------------------------------------------------------
+    */
+    Route::middleware('role:doctor')->prefix('doctor')->name('doctor.')->group(function () {
+        Route::get('/dashboard', [DashboardController::class, 'doctor'])->name('dashboard');
+
+        // Patient management
+        Route::get('/patients',                [PatientController::class, 'index'])->name('patients.index');
+        Route::get('/patients/create',         [PatientController::class, 'create'])->name('patients.create');
+        Route::post('/patients',               [PatientController::class, 'store'])->name('patients.store');
+        Route::get('/patients/{patient}',      [PatientController::class, 'show'])->name('patients.show');
+        Route::get('/patients/{patient}/edit', [PatientController::class, 'edit'])->name('patients.edit');
+        Route::put('/patients/{patient}',      [PatientController::class, 'update'])->name('patients.update');
+        Route::delete('/patients/{patient}',   [PatientController::class, 'destroy'])->name('patients.destroy');
+
+        // Appointments — full control
+        Route::get('/appointments',    [AppointmentController::class, 'index'])->name('appointments.index');
+        Route::post('/appointments',   [AppointmentController::class, 'store'])->name('appointments.store');
+        Route::patch('/appointments/{appointment}/confirm',  [AppointmentController::class, 'confirm'])->name('appointments.confirm');
+        Route::patch('/appointments/{appointment}/complete', [AppointmentController::class, 'complete'])->name('appointments.complete');
+        Route::patch('/appointments/{appointment}/cancel',   [AppointmentController::class, 'cancel'])->name('appointments.cancel');
+
+        // Visits — full SOAP documentation
+        Route::post('/patients/{patient}/visits',                    [VisitController::class, 'store'])->name('visits.store');
+        Route::get('/patients/{patient}/visits/{visit}/edit',        [VisitController::class, 'edit'])->name('visits.edit');
+        Route::put('/patients/{patient}/visits/{visit}',             [VisitController::class, 'update'])->name('visits.update');
+        Route::patch('/patients/{patient}/visits/{visit}/finalize',  [VisitController::class, 'finalize'])->name('visits.finalize');
+
+        // Analytics
+        Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
+    });
 });

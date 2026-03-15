@@ -4,78 +4,55 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Patient extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'patient_id',
         'first_name',
         'last_name',
         'date_of_birth',
         'gender',
-        'email',
-        'full_name',
         'phone',
-        'occupation',
+        'email',
         'address',
-        'city',
-        'state',
-        'postal_code',
-        'country',
-        'medical_history',
-        'current_medications',
+        'blood_type',
         'allergies',
-        'vaccine_history',
-        'insurance_provider',
-        'insurance_id',
-        'emergency_contact_name',
-        'emergency_contact_phone',
-        'emergency_contact_relationship',
-        'height',
-        'weight',
-        'bmi',
-        'blood_pressure',
-        'temperature',
-        'vitals_updated_at',
-        'created_by',
+        'notes',
     ];
 
     protected $casts = [
         'date_of_birth' => 'date',
-        'vitals_updated_at' => 'datetime',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
     ];
+
+    // ── Accessors ─────────────────────────────────────────────────
+
+    public function getFullNameAttribute(): string
+    {
+        return "{$this->first_name} {$this->last_name}";
+    }
+
+    public function getAgeAttribute(): int
+    {
+        return $this->date_of_birth->age;
+    }
+
+    // ── Relationships ─────────────────────────────────────────────
 
     public function appointments()
     {
-        return $this->hasMany(Appointment::class);
+        return $this->hasMany(Appointment::class)->latest();
     }
 
     public function visits()
     {
-        return $this->hasMany(PatientVisit::class);
+        return $this->hasMany(Visit::class)->latest();
     }
 
-    public function recordings()
+    public function latestVisit()
     {
-        return $this->hasMany(Recording::class);
-    }
-
-    public function prescriptions()
-    {
-        return $this->hasMany(PrescriptionItem::class);
-    }
-
-    public function waitlistEntry()
-    {
-        return $this->hasOne(Waitlist::class);
-    }
-
-    public function createdBy()
-    {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->hasOne(Visit::class)->latestOfMany();
     }
 }

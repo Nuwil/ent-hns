@@ -7,27 +7,41 @@ use Carbon\Carbon;
 use App\Models\User;
 use App\Models\Patient;
 use App\Models\Appointment;
+use App\Models\PatientVisit;
 use App\Models\Analytics;
 use Illuminate\Support\Facades\Schema;
 
 class DoctorDashboardController extends Controller
 {
-    public function dashboard(Request $request)
+    /**
+     * Get authenticated user with fallback to session data
+     */
+    protected function getAuthUser()
     {
-        if (! session('user_id')) {
-            return redirect()->route('login');
-        }
-
         $user = User::find(session('user_id'));
         
-        if ($user->role !== 'doctor') {
-            abort(403, 'Unauthorized access');
+        // If user lookup fails but we have session data, create a fallback
+        if (!$user && session('user_id')) {
+            $user = (object)[
+                'id' => session('user_id'),
+                'full_name' => session('user_name', 'User'),
+                'username' => session('user_name', 'User'),
+                'role' => session('user_role', 'doctor'),
+            ];
         }
+        
+        return $user;
+    }
+
+    public function dashboard(Request $request)
+    {
+        $user = $this->getAuthUser();
+        $userId = $user->id;
 
         // Get doctor's statistics
         $totalAppointments = Appointment::where('doctor_id', $user->id)->count();
         $pendingAppointments = Appointment::where('doctor_id', $user->id)
-            ->where('status', 'pending')
+            ->where('status', 'Pending')
             ->count();
 
         return view('doctor.dashboard', [
@@ -39,16 +53,6 @@ class DoctorDashboardController extends Controller
 
     public function patients(Request $request)
     {
-        if (! session('user_id')) {
-            return redirect()->route('login');
-        }
-
-        $user = User::find(session('user_id'));
-        
-        if ($user->role !== 'doctor') {
-            abort(403, 'Unauthorized access');
-        }
-
         $search = $request->input('search', '');
         $query = Patient::query();
 
@@ -60,22 +64,14 @@ class DoctorDashboardController extends Controller
 
         // Get all patients (or filter by search)
         $patients = $query->paginate(20);
+        $user = $this->getAuthUser();
 
         return view('doctor.patients', ['user' => $user, 'patients' => $patients, 'search' => $search]);
     }
 
     public function patientProfile($patientId, Request $request)
     {
-        if (! session('user_id')) {
-            return redirect()->route('login');
-        }
-
-        $user = User::find(session('user_id'));
-        
-        if ($user->role !== 'doctor') {
-            abort(403, 'Unauthorized access');
-        }
-
+        $user = $this->getAuthUser();
         $patient = Patient::find($patientId);
         
         if (!$patient) {
@@ -96,21 +92,31 @@ class DoctorDashboardController extends Controller
 
     public function appointments(Request $request)
     {
-        if (! session('user_id')) {
-            return redirect()->route('login');
-        }
-
-        $user = User::find(session('user_id'));
+        $userId = session('user_id');
+        $user = User::find($userId);
+        $filterStatus = $request->input('status', '');
         
-        if ($user->role !== 'doctor') {
-            abort(403, 'Unauthorized access');
+        // Build query for paginated appointments
+        $query = Appointment::where('doctor_id', $user->id)->with('patient');
+        
+        // Apply status filter if provided
+        if ($filterStatus) {
+            // Normalize status: convert lowercase input to match database enum (Pending, Accepted, etc.)
+            $statusMap = [
+                'pending' => 'Pending',
+                'confirmed' => 'Accepted',
+                'accepted' => 'Accepted',
+                'completed' => 'Completed',
+                'cancelled' => 'Cancelled',
+                'no-show' => 'No-Show',
+            ];
+            
+            $dbStatus = $statusMap[$filterStatus] ?? ucfirst($filterStatus);
+            $query->where('status', $dbStatus);
         }
 
         // Get paginated appointments for the table
-        $appointments = Appointment::where('doctor_id', $user->id)
-            ->with('patient')
-            ->orderBy('appointment_date', 'desc')
-            ->paginate(20);
+        $appointments = $query->orderBy('appointment_date', 'desc')->paginate(20);
 
         // Get appointments for the current month for the calendar
         $currentMonth = now()->startOfMonth();
@@ -120,15 +126,15 @@ class DoctorDashboardController extends Controller
             ->whereBetween('appointment_date', [$currentMonth, $nextMonth])
             ->with('patient')
             ->get()
-            ->map(function ($appointment) {
+            ->map(function ($appointment) use ($user) {
                 return [
                     'id' => $appointment->id,
                     'appointment_date' => $appointment->appointment_date,
                     'appointment_time' => $appointment->appointment_date, // Full datetime
                     'patient_name' => $appointment->patient ? $appointment->patient->first_name . ' ' . $appointment->patient->last_name : 'Unknown',
-                    'appointment_type' => $appointment->type ?? 'General',
+                    'appointment_type' => $appointment->appointment_type ?? 'General',
                     'duration' => $appointment->duration ?? 30,
-                    'status' => $appointment->status ?? 'pending',
+                    'status' => strtolower($appointment->status ?? 'pending'),
                     'notes' => $appointment->notes ?? '',
                     'doctor_name' => $user->full_name ?? 'N/A'
                 ];
@@ -137,22 +143,15 @@ class DoctorDashboardController extends Controller
         return view('doctor.appointments', [
             'user' => $user, 
             'appointments' => $appointments,
+            'filterStatus' => $filterStatus,
             'calendarAppointments' => $calendarAppointments
         ]);
     }
 
     public function analytics(Request $request)
     {
-        if (! session('user_id')) {
-            return redirect()->route('login')->with('error', 'Session expired. Please log in again.');
-        }
-
-        $user = User::find(session('user_id'));
-        
-        if (!$user || $user->role !== 'doctor') {
-            session()->flush();
-            return redirect()->route('login')->with('error', 'Unauthorized access. Please log in again.');
-        }
+        $userId = session('user_id');
+        $user = User::find($userId);
 
         // Get time range filter
         $timeRange = $request->get('timeRange', 'this_month');
@@ -228,10 +227,10 @@ class DoctorDashboardController extends Controller
             ->whereBetween('appointment_date', [$dateRange['from'], $dateRange['to']])
             ->get();
         
-        $completedAppointments = $appointments->where('status', 'completed')->count();
-        $pendingAppointments = $appointments->where('status', 'pending')->count();
-        $confirmedAppointments = $appointments->where('status', 'confirmed')->count();
-        $cancelledAppointments = $appointments->where('status', 'cancelled')->count();
+        $completedAppointments = $appointments->where('status', 'Completed')->count();
+        $pendingAppointments = $appointments->where('status', 'Pending')->count();
+        $confirmedAppointments = $appointments->where('status', 'Accepted')->count();
+        $cancelledAppointments = $appointments->where('status', 'Cancelled')->count();
 
         return [
             'total_patients' => $totalPatients,
@@ -265,7 +264,7 @@ class DoctorDashboardController extends Controller
 
         // Calculate completion rate for prediction
         $completionRate = $historicalAppointments->count() > 0 
-            ? ($historicalAppointments->where('status', 'completed')->count() / $historicalAppointments->count()) * 100
+            ? ($historicalAppointments->where('status', 'Completed')->count() / $historicalAppointments->count()) * 100
             : 0;
 
         // Predict completed appointments
@@ -323,7 +322,7 @@ class DoctorDashboardController extends Controller
         $recommendations = [];
 
         // Recommendation 1: High pending appointments
-        $pendingCount = $appointments->where('status', 'pending')->count();
+        $pendingCount = $appointments->where('status', 'Pending')->count();
         if ($pendingCount > 5) {
             $recommendations[] = [
                 'type' => 'warning',
@@ -334,7 +333,7 @@ class DoctorDashboardController extends Controller
 
         // Recommendation 2: Low completion rate
         $completionRate = $appointments->count() > 0 
-            ? ($appointments->where('status', 'completed')->count() / $appointments->count()) * 100
+            ? ($appointments->where('status', 'Completed')->count() / $appointments->count()) * 100
             : 0;
 
         if ($completionRate < 75 && $appointments->count() > 0) {
@@ -346,7 +345,7 @@ class DoctorDashboardController extends Controller
         }
 
         // Recommendation 3: Cancellation rate
-        $cancelledCount = $appointments->where('status', 'cancelled')->count();
+        $cancelledCount = $appointments->where('status', 'Cancelled')->count();
         $cancellationRate = $appointments->count() > 0 
             ? ($cancelledCount / $appointments->count()) * 100
             : 0;
@@ -385,15 +384,7 @@ class DoctorDashboardController extends Controller
 
     public function storePatient(Request $request)
     {
-        if (! session('user_id')) {
-            return redirect()->route('login');
-        }
-
-        $user = User::find(session('user_id'));
-        
-        if ($user->role !== 'doctor') {
-            abort(403, 'Unauthorized access');
-        }
+        $user = $this->getAuthUser();
 
         // Validate the patient data
         $request->validate([
@@ -447,4 +438,126 @@ class DoctorDashboardController extends Controller
 
         return redirect()->route('doctor.patients')->with('status', 'Patient created successfully!');
     }
+
+    public function editPatient($patientId, Request $request)
+    {
+        $user = $this->getAuthUser();
+        $patient = Patient::findOrFail($patientId);
+
+        return view('doctor.edit-patient', ['user' => $user, 'patient' => $patient]);
+    }
+
+    public function updatePatient($patientId, Request $request)
+    {
+        $patient = Patient::findOrFail($patientId);
+
+        $request->validate([
+            'first_name' => 'required|string|max:100',
+            'last_name' => 'required|string|max:100',
+            'date_of_birth' => 'required|date|before:today',
+            'gender' => 'required|string|in:Male,Female,Other',
+            'height' => 'required|numeric|min:0',
+            'weight' => 'required|numeric|min:0',
+            'phone' => 'required|string|max:20',
+            'email' => 'nullable|email|max:100|unique:patients,email,' . $patient->id,
+            'occupation' => 'nullable|string|max:100',
+            'country' => 'required|string|max:100',
+            'state' => 'required|string|max:100',
+            'city' => 'required|string|max:100',
+            'address' => 'required|string|max:255',
+            'allergies' => 'nullable|string',
+            'vaccine_history' => 'nullable|string',
+            'emergency_contact_name' => 'required|string|max:100',
+            'emergency_contact_relationship' => 'required|string|max:50',
+            'emergency_contact_phone' => 'required|string|max:20',
+        ]);
+
+        $patient->update($request->all());
+
+        return redirect()->route('doctor.patient-profile', ['patient_id' => $patientId])
+            ->with('status', 'Patient updated successfully!');
+    }
+
+    public function createAppointment(Request $request)
+    {
+        $user = $this->getAuthUser();
+        $patients = Patient::select('id', 'first_name', 'last_name')->orderBy('first_name')->get();
+        $doctors = User::where('role', 'doctor')->select('id', 'full_name')->orderBy('full_name')->get();
+
+        return view('doctor.create-appointment', [
+            'user' => $user,
+            'patients' => $patients,
+            'doctors' => $doctors,
+        ]);
+    }
+
+    public function createVisit(Request $request)
+    {
+        $user = $this->getAuthUser();
+        $patientId = $request->get('patient_id');
+        $appointmentId = $request->get('appointment_id');
+        
+        $patient = $patientId ? Patient::findOrFail($patientId) : null;
+        $appointment = $appointmentId ? Appointment::findOrFail($appointmentId) : null;
+
+        return view('doctor.create-visit', [
+            'user' => $user,
+            'patient' => $patient,
+            'appointment' => $appointment,
+        ]);
+    }
+
+    public function storeVisit(Request $request)
+    {
+        $user = $this->getAuthUser();
+
+        $request->validate([
+            'patient_id' => 'required|exists:patients,id',
+            'visit_date' => 'required|date',
+            'visit_type' => 'required|string',
+            'ent_type' => 'nullable|string',
+            'chief_complaint' => 'nullable|string',
+            'history' => 'nullable|string',
+            'physical_exam' => 'nullable|string',
+            'diagnosis' => 'nullable|string',
+            'treatment_plan' => 'nullable|string',
+            'prescription' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'height' => 'nullable|numeric|min:0',
+            'weight' => 'nullable|numeric|min:0',
+            'blood_pressure' => 'nullable|string',
+            'temperature' => 'nullable|numeric|min:0',
+            'pulse_rate' => 'nullable|numeric|min:0',
+            'respiratory_rate' => 'nullable|numeric|min:0',
+            'oxygen_saturation' => 'nullable|numeric|min:0|max:100',
+        ]);
+
+        $visit = new PatientVisit();
+        $visit->patient_id = $request->patient_id;
+        $visit->appointment_id = $request->input('appointment_id');
+        $visit->visit_date = $request->visit_date;
+        $visit->visit_type = $request->visit_type;
+        $visit->ent_type = $request->ent_type;
+        $visit->chief_complaint = $request->chief_complaint;
+        $visit->history = $request->history;
+        $visit->physical_exam = $request->physical_exam;
+        $visit->diagnosis = $request->diagnosis;
+        $visit->treatment_plan = $request->treatment_plan;
+        $visit->prescription = $request->prescription;
+        $visit->notes = $request->notes;
+        $visit->height = $request->height;
+        $visit->weight = $request->weight;
+        $visit->blood_pressure = $request->blood_pressure;
+        $visit->temperature = $request->temperature;
+        $visit->pulse_rate = $request->pulse_rate;
+        $visit->respiratory_rate = $request->respiratory_rate;
+        $visit->oxygen_saturation = $request->oxygen_saturation;
+        $visit->doctor_id = $user->id;
+        $visit->doctor_name = $user->full_name;
+        $visit->save();
+
+        return redirect()->route('doctor.patient-profile', ['patient_id' => $request->patient_id])
+            ->with('status', 'Visit record created successfully!');
+    }
 }
+

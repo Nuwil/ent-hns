@@ -12,9 +12,9 @@ class User extends Authenticatable
 
     protected $fillable = [
         'username',
+        'full_name',
         'email',
         'password_hash',
-        'full_name',
         'role',
         'is_active',
         'is_protected',
@@ -22,52 +22,58 @@ class User extends Authenticatable
 
     protected $hidden = [
         'password_hash',
+        'remember_token',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
-        'is_protected' => 'boolean',
     ];
 
     /**
-     * Boot the model and set up event listeners.
-     *
-     * Auto-protect the very first administrator account regardless of how it
-     * is created.  This ensures the special user cannot be deleted or
-     * deactivated later on.
+     * Tell Laravel which column stores the password.
      */
-    protected static function booted()
-    {
-        static::creating(function ($user) {
-            if ($user->role === 'admin' && User::where('role', 'admin')->count() === 0) {
-                $user->is_protected = true;
-            }
-        });
-    }
-
-    // Override getAuthPassword to use password_hash instead of password
-    public function getAuthPassword()
+    public function getAuthPassword(): string
     {
         return $this->password_hash;
     }
 
-    public function appointments()
+    // ── Role helpers ──────────────────────────────────────────────
+
+    public function isAdmin(): bool
     {
-        return $this->hasMany(Appointment::class, 'doctor_id');
+        return $this->role === 'admin';
     }
+
+    public function isSecretary(): bool
+    {
+        return $this->role === 'secretary';
+    }
+
+    public function isDoctor(): bool
+    {
+        return $this->role === 'doctor';
+    }
+
+    public function dashboardRoute(): string
+    {
+        return match ($this->role) {
+            'admin'     => 'admin.dashboard',
+            'secretary' => 'secretary.dashboard',
+            'doctor'    => 'doctor.dashboard',
+            default     => 'login',
+        };
+    }
+
+    // ── Accessor: map full_name → name for blade templates ───────
+    public function getNameAttribute(): string
+    {
+        return $this->full_name ?? $this->username;
+    }
+
+    // ── Relationships ─────────────────────────────────────────────
 
     public function visits()
     {
-        return $this->hasMany(PatientVisit::class, 'doctor_id');
-    }
-
-    public function recordings()
-    {
-        return $this->hasMany(Recording::class, 'recorded_by');
-    }
-
-    public function activityLogs()
-    {
-        return $this->hasMany(ActivityLog::class);
+        return $this->hasMany(Visit::class, 'doctor_id');
     }
 }

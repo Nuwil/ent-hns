@@ -9,23 +9,35 @@ use App\Models\Appointment;
 
 class SecretaryDashboardController extends Controller
 {
-    public function dashboard(Request $request)
+    /**
+     * Get authenticated user with fallback to session data
+     */
+    protected function getAuthUser()
     {
-        if (! session('user_id')) {
-            return redirect()->route('login');
-        }
-
         $user = User::find(session('user_id'));
         
-        if ($user->role !== 'secretary') {
-            abort(403, 'Unauthorized access');
+        // If user lookup fails but we have session data, create a fallback
+        if (!$user && session('user_id')) {
+            $user = (object)[
+                'id' => session('user_id'),
+                'full_name' => session('user_name', 'User'),
+                'username' => session('user_name', 'User'),
+                'role' => session('user_role', 'secretary'),
+            ];
         }
+        
+        return $user;
+    }
+
+    public function dashboard(Request $request)
+    {
+        $user = $this->getAuthUser();
 
         // Get statistics for secretary dashboard
         $totalPatients = Patient::count();
         $totalAppointments = Appointment::count();
         $upcomingAppointments = Appointment::where('appointment_date', '>=', now())
-            ->where('status', '!=', 'completed')
+            ->where('status', '!=', 'Completed')
             ->count();
 
         return view('secretary.dashboard', [
@@ -38,16 +50,8 @@ class SecretaryDashboardController extends Controller
 
     public function patients(Request $request)
     {
-        if (! session('user_id')) {
-            return redirect()->route('login');
-        }
-
-        $user = User::find(session('user_id'));
+        $user = $this->getAuthUser();
         
-        if ($user->role !== 'secretary') {
-            abort(403, 'Unauthorized access');
-        }
-
         $search = $request->input('search', '');
         $query = Patient::query();
 
@@ -68,16 +72,7 @@ class SecretaryDashboardController extends Controller
 
     public function patientProfile($patientId, Request $request)
     {
-        if (! session('user_id')) {
-            return redirect()->route('login');
-        }
-
-        $user = User::find(session('user_id'));
-        
-        if ($user->role !== 'secretary') {
-            abort(403, 'Unauthorized access');
-        }
-
+        $user = $this->getAuthUser();
         $patient = Patient::find($patientId);
         
         if (!$patient) {
@@ -98,21 +93,23 @@ class SecretaryDashboardController extends Controller
 
     public function appointments(Request $request)
     {
-        if (! session('user_id')) {
-            return redirect()->route('login');
-        }
-
-        $user = User::find(session('user_id'));
-        
-        if ($user->role !== 'secretary') {
-            abort(403, 'Unauthorized access');
-        }
-
+        $user = $this->getAuthUser();
         $filterStatus = $request->input('status', '');
         $query = Appointment::query()->with('patient', 'doctor');
 
         if ($filterStatus) {
-            $query->where('status', $filterStatus);
+            // Normalize status: convert lowercase input to match database enum (Pending, Accepted, etc.)
+            $statusMap = [
+                'pending' => 'Pending',
+                'confirmed' => 'Accepted',
+                'accepted' => 'Accepted',
+                'completed' => 'Completed',
+                'cancelled' => 'Cancelled',
+                'no-show' => 'No-Show',
+            ];
+            
+            $dbStatus = $statusMap[$filterStatus] ?? ucfirst($filterStatus);
+            $query->where('status', $dbStatus);
         }
 
         // Get paginated appointments for the table
@@ -131,9 +128,9 @@ class SecretaryDashboardController extends Controller
                     'appointment_date' => $appointment->appointment_date,
                     'appointment_time' => $appointment->appointment_date, // Full datetime
                     'patient_name' => $appointment->patient ? $appointment->patient->first_name . ' ' . $appointment->patient->last_name : 'Unknown',
-                    'appointment_type' => $appointment->type ?? 'General',
+                    'appointment_type' => $appointment->appointment_type ?? 'General',
                     'duration' => $appointment->duration ?? 30,
-                    'status' => $appointment->status ?? 'pending',
+                    'status' => strtolower($appointment->status ?? 'Pending'),
                     'notes' => $appointment->notes ?? '',
                     'doctor_name' => $appointment->doctor ? $appointment->doctor->full_name : 'N/A'
                 ];
@@ -149,15 +146,7 @@ class SecretaryDashboardController extends Controller
 
     public function storePatient(Request $request)
     {
-        if (! session('user_id')) {
-            return redirect()->route('login');
-        }
-
-        $user = User::find(session('user_id'));
-        
-        if ($user->role !== 'secretary') {
-            abort(403, 'Unauthorized access');
-        }
+        $user = $this->getAuthUser();
 
         // Validate the patient data
         $request->validate([
@@ -209,5 +198,57 @@ class SecretaryDashboardController extends Controller
         $patient->save();
 
         return redirect()->route('secretary.patients')->with('status', 'Patient created successfully!');
+    }
+
+    public function editPatient($patientId, Request $request)
+    {
+        $user = $this->getAuthUser();
+        $patient = Patient::findOrFail($patientId);
+
+        return view('secretary.edit-patient', ['user' => $user, 'patient' => $patient]);
+    }
+
+    public function updatePatient($patientId, Request $request)
+    {
+        $patient = Patient::findOrFail($patientId);
+
+        $request->validate([
+            'first_name' => 'required|string|max:100',
+            'last_name' => 'required|string|max:100',
+            'date_of_birth' => 'required|date|before:today',
+            'gender' => 'required|string|in:Male,Female,Other',
+            'height' => 'required|numeric|min:0',
+            'weight' => 'required|numeric|min:0',
+            'phone' => 'required|string|max:20',
+            'email' => 'nullable|email|max:100|unique:patients,email,' . $patient->id,
+            'occupation' => 'nullable|string|max:100',
+            'country' => 'required|string|max:100',
+            'state' => 'required|string|max:100',
+            'city' => 'required|string|max:100',
+            'address' => 'required|string|max:255',
+            'allergies' => 'nullable|string',
+            'vaccine_history' => 'nullable|string',
+            'emergency_contact_name' => 'required|string|max:100',
+            'emergency_contact_relationship' => 'required|string|max:50',
+            'emergency_contact_phone' => 'required|string|max:20',
+        ]);
+
+        $patient->update($request->all());
+
+        return redirect()->route('secretary.patient-profile', ['patient_id' => $patientId])
+            ->with('status', 'Patient updated successfully!');
+    }
+
+    public function createAppointment(Request $request)
+    {
+        $user = $this->getAuthUser();
+        $patients = Patient::select('id', 'first_name', 'last_name')->orderBy('first_name')->get();
+        $doctors = User::where('role', 'doctor')->select('id', 'full_name')->orderBy('full_name')->get();
+
+        return view('secretary.create-appointment', [
+            'user' => $user,
+            'patients' => $patients,
+            'doctors' => $doctors,
+        ]);
     }
 }

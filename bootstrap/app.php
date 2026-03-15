@@ -1,4 +1,47 @@
 <?php
+// ============================================================
+// FOR LARAVEL 10 — app/Http/Kernel.php
+// Add the following to $middlewareAliases (or $routeMiddleware):
+// ============================================================
+//
+//   protected $middlewareAliases = [
+//       // ... existing entries ...
+//       'role' => \App\Http\Middleware\RoleMiddleware::class,
+//       'session.valid' => \App\Http\Middleware\EnsureSessionIsValid::class,
+//   ];
+//
+//   Also add to $middlewareGroups['web']:
+//       \App\Http\Middleware\EnsureSessionIsValid::class,
+//
+// ============================================================
+// FOR LARAVEL 11 — bootstrap/app.php
+// ============================================================
+//
+// use Illuminate\Foundation\Application;
+// use Illuminate\Foundation\Configuration\Exceptions;
+// use Illuminate\Foundation\Configuration\Middleware;
+//
+// return Application::configure(basePath: dirname(__DIR__))
+//     ->withRouting(
+//         web: __DIR__.'/../routes/web.php',
+//         commands: __DIR__.'/../routes/console.php',
+//         health: '/up',
+//     )
+//     ->withMiddleware(function (Middleware $middleware) {
+//         $middleware->web(append: [
+//             \App\Http\Middleware\EnsureSessionIsValid::class,
+//         ]);
+//         $middleware->alias([
+//             'role' => \App\Http\Middleware\RoleMiddleware::class,
+//         ]);
+//     })
+//     ->withExceptions(function (Exceptions $exceptions) {
+//         //
+//     })->create();
+//
+// ============================================================
+// COMPLETE bootstrap/app.php for Laravel 11 (copy this file):
+// ============================================================
 
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -6,47 +49,24 @@ use Illuminate\Foundation\Configuration\Middleware;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
-        web: __DIR__."/../routes/web.php",
-        api: __DIR__."/../routes/api.php",
-        commands: __DIR__."/../routes/console.php",
-        health: "/up",
+        web: __DIR__.'/../routes/web.php',
+        commands: __DIR__.'/../routes/console.php',
+        health: '/up',
     )
-    ->withMiddleware(function (Middleware $middleware): void {
-        // Must encrypt/decrypt cookies for both web and API routes
-        $middleware->encryptCookies(except: [
-            // Add any cookie names that should NOT be encrypted here
+    ->withMiddleware(function (Middleware $middleware) {
+        $middleware->web(append: [
+            \App\Http\Middleware\EnsureSessionIsValid::class,
+            \App\Http\Middleware\LogActivityMiddleware::class,
         ]);
-        
-        // Configure web middleware
-        $middleware->web(prepend: [
-            \Illuminate\Session\Middleware\StartSession::class,
-        ], append: [
-            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
-            \App\Http\Middleware\HandleCors::class,
-            \App\Http\Middleware\CheckSessionTimeout::class,
-        ]);
-        
-        // Configure API middleware - MUST include session for authenticated API calls
-        $middleware->api(prepend: [
-            \Illuminate\Session\Middleware\StartSession::class,
-            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
-        ], append: [
-            \App\Http\Middleware\HandleCors::class,
-        ]);
-        
-        // Add middleware aliases
         $middleware->alias([
-            "auth.session" => \App\Http\Middleware\CheckAuth::class,
-            "role" => \App\Http\Middleware\CheckRole::class,
-            "debug.session" => \App\Http\Middleware\DebugSessionMiddleware::class,
-        ]);
-        
-        // Enable CSRF validation for all routes except API and logout
-        $middleware->validateCsrfTokens(except: [
-            'api/*',
-            'logout',  // TODO: Fix CSRF issue on logout and re-enable
+            'role' => \App\Http\Middleware\RoleMiddleware::class,
         ]);
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
-        //
+    ->withExceptions(function (Exceptions $exceptions) {
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, $request) {
+            $status = $e->getStatusCode();
+            if (view()->exists("errors.$status")) {
+                return response()->view("errors.$status", ['exception' => $e], $status);
+            }
+        });
     })->create();

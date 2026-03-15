@@ -12,13 +12,13 @@ class PatientsController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $page = $request->get('page', 1);
-            $limit = $request->get('limit', 10);
+            $limit = (int) $request->get('limit', 10);
             $search = trim($request->get('search', ''));
 
             $query = Patient::query();
 
-            if (!empty($search)) {
+            // Apply search filter only if search term is provided and non-empty
+            if (!empty($search) && $search !== 'undefined') {
                 $normalized = preg_replace('/\s+/', ' ', $search);
                 $wildcard = '%' . str_replace(' ', '%', $normalized) . '%';
 
@@ -32,22 +32,29 @@ class PatientsController extends Controller
                 });
             }
 
-            $total = $query->count();
+            // Get paginated results - let Laravel handle page from query string
             $patients = $query->orderBy('created_at', 'desc')
-                ->paginate($limit, ['*'], 'page', $page);
+                ->paginate($limit);
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'patients' => $patients->items(),
-                    'total' => $total,
-                    'page' => $page,
+                    'total' => $patients->total(),
+                    'page' => $patients->currentPage(),
                     'limit' => $limit,
-                    'pages' => ceil($total / $limit),
+                    'pages' => $patients->lastPage(),
                 ]
             ]);
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+            \Log::error('Patient API Error:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 

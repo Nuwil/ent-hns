@@ -69,8 +69,9 @@ class AppointmentsController extends Controller
             }
 
             $appointments = $query->orderBy('appointment_date')->get()->map(function ($apt) {
+                $aptArray = $apt instanceof \Illuminate\Database\Eloquent\Model ? $apt->toArray() : (array)$apt;
                 return [
-                    ...$apt->toArray(),
+                    ...$aptArray,
                     'start_at' => $apt->appointment_date->toIso8601String() . 'Z',
                     'end_at' => $apt->appointment_date->addMinutes($apt->duration ?? 0)->toIso8601String() . 'Z',
                     'type' => $apt->appointment_type,
@@ -112,7 +113,7 @@ class AppointmentsController extends Controller
             
             // Set default status
             if (!isset($validated['status'])) {
-                $validated['status'] = 'pending';
+                $validated['status'] = 'Pending';
             }
 
             $appointment = Appointment::create($validated);
