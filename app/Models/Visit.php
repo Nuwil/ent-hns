@@ -14,26 +14,18 @@ class Visit extends Model
     const STATUS_FINALIZED   = 'finalized';
 
     protected $fillable = [
-        'patient_id',
-        'doctor_id',
-        'appointment_id',
-        'visited_at',
+        'patient_id', 'doctor_id', 'appointment_id', 'visited_at',
         // Secretary fields
-        'chief_complaint',
-        'ent_classification',
+        'chief_complaint', 'ent_classification',
+        'blood_pressure', 'weight', 'height',
         // Doctor fields
-        'history_of_illness',
-        'exam_findings',
-        'diagnosis',
-        'treatment_plan',
-        'notes',
-        'prescriptions',
-        'follow_up_date',
+        'history', 'history_of_illness',
+        'physical_exam', 'exam_findings',
+        'diagnosis', 'treatment_plan',
+        'plan_instructions',
+        'notes', 'prescriptions', 'follow_up_date',
         // Workflow
-        'recorded_by',
-        'status',
-        'finalized_by',
-        'finalized_at',
+        'recorded_by', 'status', 'finalized_by', 'finalized_at',
     ];
 
     protected $casts = [

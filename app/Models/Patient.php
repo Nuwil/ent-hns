@@ -11,15 +11,11 @@ class Patient extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'first_name',
-        'last_name',
-        'date_of_birth',
-        'gender',
-        'phone',
-        'email',
-        'address',
-        'blood_type',
-        'allergies',
+        'first_name', 'last_name', 'date_of_birth', 'gender',
+        'phone', 'occupation',
+        'province', 'city', 'address',
+        'blood_type', 'allergies',
+        'insurance_info', 'medical_history',
         'notes',
     ];
 
@@ -37,6 +33,12 @@ class Patient extends Model
     public function getAgeAttribute(): int
     {
         return $this->date_of_birth->age;
+    }
+
+    public function getFullAddressAttribute(): string
+    {
+        return collect([$this->address, $this->city, $this->province])
+            ->filter()->implode(', ');
     }
 
     // ── Relationships ─────────────────────────────────────────────

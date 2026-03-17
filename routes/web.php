@@ -44,6 +44,11 @@ Route::middleware('auth')->group(function () {
         Route::put('/users/{user}',      [SettingsController::class, 'updateUser'])->name('users.update');
         Route::delete('/users/{user}',   [SettingsController::class, 'destroyUser'])->name('users.destroy');
         Route::patch('/users/{user}/toggle', [SettingsController::class, 'toggleUser'])->name('users.toggle');
+
+        // Analytics — admin sees all doctors
+        Route::get('/analytics',             [AnalyticsController::class, 'index'])->name('analytics');
+        Route::get('/analytics/doctor-data', [AnalyticsController::class, 'doctorData'])->name('analytics.doctor');
+        Route::get('/analytics/clinic-data', [AnalyticsController::class, 'clinicData'])->name('analytics.clinic');
     });
 
     /*
@@ -64,11 +69,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/patients/{patient}',      [PatientController::class, 'show'])->name('patients.show');
         Route::get('/patients/{patient}/edit', [PatientController::class, 'edit'])->name('patients.edit');
         Route::put('/patients/{patient}',      [PatientController::class, 'update'])->name('patients.update');
+        Route::post('/patients/{patient}/note',    [PatientController::class, 'addNote'])->name('patients.note');
         Route::delete('/patients/{patient}',   [PatientController::class, 'destroy'])->name('patients.destroy');
-
-        // Appointments — book only, NO confirm/cancel
         Route::get('/appointments',    [AppointmentController::class, 'index'])->name('appointments.index');
         Route::post('/appointments',   [AppointmentController::class, 'store'])->name('appointments.store');
+        Route::patch('/appointments/{appointment}/reschedule', [AppointmentController::class, 'reschedule'])->name('appointments.reschedule');
+        Route::patch('/appointments/{appointment}/reassign',   [AppointmentController::class, 'reassign'])->name('appointments.reassign');
 
         // Visits — secretary can only store limited intake data (chief complaint from list, vitals)
         Route::post('/patients/{patient}/visits',          [VisitController::class, 'storeIntake'])->name('visits.store');
@@ -93,14 +99,17 @@ Route::middleware('auth')->group(function () {
         Route::get('/patients/{patient}',      [PatientController::class, 'show'])->name('patients.show');
         Route::get('/patients/{patient}/edit', [PatientController::class, 'edit'])->name('patients.edit');
         Route::put('/patients/{patient}',      [PatientController::class, 'update'])->name('patients.update');
+        Route::post('/patients/{patient}/note',    [PatientController::class, 'addNote'])->name('patients.note');
         Route::delete('/patients/{patient}',   [PatientController::class, 'destroy'])->name('patients.destroy');
 
         // Appointments — full control
         Route::get('/appointments',    [AppointmentController::class, 'index'])->name('appointments.index');
         Route::post('/appointments',   [AppointmentController::class, 'store'])->name('appointments.store');
-        Route::patch('/appointments/{appointment}/confirm',  [AppointmentController::class, 'confirm'])->name('appointments.confirm');
-        Route::patch('/appointments/{appointment}/complete', [AppointmentController::class, 'complete'])->name('appointments.complete');
-        Route::patch('/appointments/{appointment}/cancel',   [AppointmentController::class, 'cancel'])->name('appointments.cancel');
+        Route::patch('/appointments/{appointment}/confirm',    [AppointmentController::class, 'confirm'])->name('appointments.confirm');
+        Route::patch('/appointments/{appointment}/complete',   [AppointmentController::class, 'complete'])->name('appointments.complete');
+        Route::patch('/appointments/{appointment}/cancel',     [AppointmentController::class, 'cancel'])->name('appointments.cancel');
+        Route::patch('/appointments/{appointment}/reschedule', [AppointmentController::class, 'reschedule'])->name('appointments.reschedule');
+        Route::patch('/appointments/{appointment}/reassign',   [AppointmentController::class, 'reassign'])->name('appointments.reassign');
 
         // Visits — full SOAP documentation
         Route::post('/patients/{patient}/visits',                    [VisitController::class, 'store'])->name('visits.store');
@@ -109,6 +118,8 @@ Route::middleware('auth')->group(function () {
         Route::patch('/patients/{patient}/visits/{visit}/finalize',  [VisitController::class, 'finalize'])->name('visits.finalize');
 
         // Analytics
-        Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
+        Route::get('/analytics',              [AnalyticsController::class, 'index'])->name('analytics');
+        Route::get('/analytics/doctor-data',  [AnalyticsController::class, 'doctorData'])->name('analytics.doctor');
+        Route::get('/analytics/clinic-data',  [AnalyticsController::class, 'clinicData'])->name('analytics.clinic');
     });
 });

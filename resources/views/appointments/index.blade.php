@@ -149,9 +149,14 @@
                                        class="fw-semibold text-decoration-none">
                                         {{ $appt->patient->full_name ?? '—' }}
                                     </a>
+                                    @if($appt->patient?->phone)
+                                        <div class="text-muted small">
+                                            <i class="bi bi-telephone me-1"></i>{{ $appt->patient->phone }}
+                                        </div>
+                                    @endif
                                 </td>
                                 <td>{{ $appt->doctor->name ?? '—' }}</td>
-                                <td>{{ $appt->scheduled_at->format('M j, Y H:i') }}</td>
+                                <td>{{ $appt->scheduled_at->setTimezone('Asia/Manila')->format('M j, Y') }}</td>
                                 <td>{{ Str::limit($appt->reason, 45) }}</td>
                                 <td>
                                     <span class="badge {{ $appt->statusBadgeClass() }}">
@@ -159,11 +164,30 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <div class="d-flex gap-1 align-items-center">
+                                    <div class="d-flex gap-1 align-items-center flex-wrap">
                                         <a href="{{ route("{$role}.patients.show", $appt->patient_id) }}"
-                                           class="btn btn-xs btn-outline-primary">
+                                           class="btn btn-xs btn-outline-primary" title="View Patient">
                                             <i class="bi bi-person"></i>
                                         </a>
+
+                                        {{-- Reschedule (both roles, non-completed) --}}
+                                        @if(!$appt->isCompleted() && !$appt->isCancelled())
+                                            <button class="btn btn-xs btn-outline-warning"
+                                                    title="Reschedule"
+                                                    onclick="openReschedule({{ $appt->id }}, '{{ $appt->scheduled_at->format('Y-m-d') }}')">
+                                                <i class="bi bi-calendar-event me-1"></i>Reschedule
+                                            </button>
+                                        @endif
+
+                                        {{-- Reassign doctor (both roles, non-completed) --}}
+                                        @if(!$appt->isCompleted() && !$appt->isCancelled())
+                                            <button class="btn btn-xs btn-outline-info"
+                                                    title="Reassign Doctor"
+                                                    onclick="openReassign({{ $appt->id }}, {{ $appt->doctor_id ?? 'null' }})">
+                                                <i class="bi bi-person-gear me-1"></i>Reassign
+                                            </button>
+                                        @endif
+
                                         {{-- DOCTOR ONLY actions --}}
                                         @if($role === 'doctor')
                                             @if($appt->isPending())
@@ -191,13 +215,6 @@
                                                 </form>
                                             @endif
                                         @endif
-
-                                        {{-- SECRETARY sees status only, no action buttons --}}
-                                        @if($role === 'secretary' && $appt->isPending())
-                                            <span class="text-muted small">
-                                                <i class="bi bi-lock me-1"></i>Awaiting doctor
-                                            </span>
-                                        @endif
                                     </div>
                                 </td>
                             </tr>
@@ -217,6 +234,66 @@
         </div>
     </div>
 
+</div>
+
+{{-- Reschedule Modal --}}
+<div class="modal fade" id="rescheduleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-calendar-event me-2"></i>Reschedule Appointment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="rescheduleForm">
+                @csrf @method('PATCH')
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">New Date <span class="text-danger">*</span></label>
+                        <input type="date" name="scheduled_at" id="rescheduleDateTime"
+                               class="form-control" required
+                               min="{{ now()->addDay()->format('Y-m-d') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Notes</label>
+                        <textarea name="notes" class="form-control" rows="2"
+                                  placeholder="Reason for rescheduling..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Reschedule</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{{-- Reassign Modal --}}
+<div class="modal fade" id="reassignModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-gear me-2"></i>Reassign Doctor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="reassignForm">
+                @csrf @method('PATCH')
+                <div class="modal-body">
+                    <label class="form-label fw-semibold">Assign to Doctor <span class="text-danger">*</span></label>
+                    <select name="doctor_id" id="reassignDoctorSelect" class="form-select" required>
+                        <option value="">Select doctor...</option>
+                        @foreach($doctors as $doc)
+                            <option value="{{ $doc->id }}">{{ $doc->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Reassign</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 {{-- Appointment Detail Modal --}}
@@ -288,8 +365,8 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Date & Time <span class="text-danger">*</span></label>
-                        <input type="datetime-local" name="scheduled_at" class="form-control" required
-                               min="{{ now()->addHour()->format('Y-m-d\TH:i') }}">
+                        <input type="date" name="scheduled_at" class="form-control" required
+                               min="{{ now()->addDay()->format('Y-m-d') }}">
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Reason <span class="text-danger">*</span></label>
@@ -383,11 +460,15 @@ function showApptDetail(appt) {
     document.getElementById('apptDetailBody').innerHTML = `
         <div class="appt-detail-row">
             <div class="appt-detail-icon"><i class="bi bi-person"></i></div>
-            <div><div class="appt-detail-label">Patient</div><div class="appt-detail-value">${appt.patient}</div></div>
+            <div>
+                <div class="appt-detail-label">Patient</div>
+                <div class="appt-detail-value">${appt.patient}</div>
+                ${appt.phone ? `<div style="font-size:12px;color:#64748b;margin-top:2px"><i class="bi bi-telephone me-1"></i>${appt.phone}</div>` : ''}
+            </div>
         </div>
         <div class="appt-detail-row">
             <div class="appt-detail-icon"><i class="bi bi-calendar2"></i></div>
-            <div><div class="appt-detail-label">Date & Time</div><div class="appt-detail-value">${appt.date} at ${appt.time}</div></div>
+            <div><div class="appt-detail-label">Date</div><div class="appt-detail-value">${appt.date}</div></div>
         </div>
         <div class="appt-detail-row">
             <div class="appt-detail-icon"><i class="bi bi-person-badge"></i></div>
@@ -445,15 +526,33 @@ function showDayAppts(dateStr, appts) {
         <div class="d-flex align-items-center gap-3 py-2 border-bottom" style="cursor:pointer"
              onclick="bootstrap.Modal.getInstance(document.getElementById('dayApptModal')).hide();
                       setTimeout(()=>showApptDetail(${JSON.stringify(a).replace(/"/g,'&quot;')}),300)">
-            <div class="cal-appt cal-appt-${a.status}" style="font-size:12px;padding:3px 8px">
-                <span class="cal-appt-time">${a.time}</span>
-                <span>${a.patient}</span>
+            <div class="flex-grow-1">
+                <div class="fw-semibold" style="font-size:13px">${a.patient}</div>
+                ${a.phone ? `<div style="font-size:11px;color:#64748b"><i class="bi bi-telephone me-1"></i>${a.phone}</div>` : ''}
+                <div class="text-muted small">${a.reason}</div>
             </div>
-            <div class="flex-1 small text-muted">${a.reason}</div>
+            <span class="badge cal-appt-${a.status}" style="font-size:11px">${statusLabel(a.status)}</span>
             <i class="bi bi-chevron-right text-muted"></i>
         </div>
     `).join('');
     new bootstrap.Modal(document.getElementById('dayApptModal')).show();
+}
+
+// ── Reschedule ────────────────────────────────────────────────
+function openReschedule(id, currentDt) {
+    const form = document.getElementById('rescheduleForm');
+    form.action = `{{ url('') }}/{{ auth()->user()->role }}/appointments/${id}/reschedule`;
+    document.getElementById('rescheduleDateTime').value = currentDt;
+    new bootstrap.Modal(document.getElementById('rescheduleModal')).show();
+}
+
+// ── Reassign ──────────────────────────────────────────────────
+function openReassign(id, currentDoctorId) {
+    const form = document.getElementById('reassignForm');
+    form.action = `{{ url('') }}/{{ auth()->user()->role }}/appointments/${id}/reassign`;
+    const sel = document.getElementById('reassignDoctorSelect');
+    if (currentDoctorId) sel.value = currentDoctorId;
+    new bootstrap.Modal(document.getElementById('reassignModal')).show();
 }
 </script>
 @endpush

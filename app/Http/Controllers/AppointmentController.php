@@ -50,6 +50,7 @@ class AppointmentController extends Controller
         $calendarAppointments = $calQuery->get()->map(fn($a) => [
             'id'         => $a->id,
             'patient'    => $a->patient->full_name ?? '—',
+            'phone'      => $a->patient->phone ?? '—',
             'doctor'     => $a->doctor->name ?? '—',
             'date'       => $a->scheduled_at->format('Y-m-d'),
             'time'       => $a->scheduled_at->format('H:i'),
@@ -70,7 +71,7 @@ class AppointmentController extends Controller
         $data = $request->validate([
             'patient_id'   => 'required|exists:patients,id',
             'doctor_id'    => 'required|exists:users,id',
-            'scheduled_at' => 'required|date|after:now',
+            'scheduled_at' => 'required|date|after:today',
             'reason'       => 'required|string|max:500',
             'notes'        => 'nullable|string|max:1000',
         ]);
@@ -144,8 +145,56 @@ class AppointmentController extends Controller
             subject:     $appointment,
         );
 
+        $role = Auth::user()->role;
         return redirect()
-            ->route('doctor.appointments.index')
+            ->route("{$role}.appointments.index")
             ->with('toast_success', 'Appointment cancelled.');
+    }
+
+    public function reschedule(Request $request, Appointment $appointment)
+    {
+        $data = $request->validate([
+            'scheduled_at' => 'required|date|after:today',
+            'notes'        => 'nullable|string|max:1000',
+        ]);
+
+        $appointment->update([
+            'scheduled_at' => $data['scheduled_at'],
+            'notes'        => $data['notes'] ?? $appointment->notes,
+            'status'       => Appointment::STATUS_PENDING,
+        ]);
+
+        ActivityLog::log(
+            action:      'appointment.rescheduled',
+            description: "Rescheduled appointment for {$appointment->patient->full_name}",
+            severity:    'info',
+            subject:     $appointment,
+        );
+
+        $role = Auth::user()->role;
+        return redirect()
+            ->route("{$role}.appointments.index")
+            ->with('toast_success', 'Appointment rescheduled successfully.');
+    }
+
+    public function reassign(Request $request, Appointment $appointment)
+    {
+        $data = $request->validate([
+            'doctor_id' => 'required|exists:users,id',
+        ]);
+
+        $appointment->update(['doctor_id' => $data['doctor_id']]);
+
+        ActivityLog::log(
+            action:      'appointment.reassigned',
+            description: "Reassigned appointment for {$appointment->patient->full_name}",
+            severity:    'info',
+            subject:     $appointment,
+        );
+
+        $role = Auth::user()->role;
+        return redirect()
+            ->route("{$role}.appointments.index")
+            ->with('toast_success', 'Appointment reassigned successfully.');
     }
 }

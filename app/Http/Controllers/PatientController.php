@@ -22,7 +22,8 @@ class PatientController extends Controller
                   ->orWhere('email', 'like', "%{$search}%");
             })
             ->withCount('visits')
-            ->latest()
+            ->orderBy('first_name')
+            ->orderBy('last_name')
             ->paginate(15)
             ->withQueryString();
 
@@ -37,16 +38,19 @@ class PatientController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'first_name'    => 'required|string|max:100',
-            'last_name'     => 'required|string|max:100',
-            'date_of_birth' => 'required|date|before:today',
-            'gender'        => 'required|in:male,female,other',
-            'phone'         => 'required|string|max:20',
-            'email'         => 'nullable|email|max:150',
-            'address'       => 'nullable|string|max:500',
-            'blood_type'    => 'nullable|in:A+,A-,B+,B-,AB+,AB-,O+,O-',
-            'allergies'     => 'nullable|string|max:1000',
-            'notes'         => 'nullable|string|max:2000',
+            'first_name'     => 'required|string|max:100',
+            'last_name'      => 'required|string|max:100',
+            'date_of_birth'  => 'required|date|before:today',
+            'gender'         => 'required|in:male,female,other',
+            'phone'          => 'required|string|max:20',
+            'occupation'     => 'nullable|string|max:150',
+            'province'       => 'nullable|string|max:100',
+            'city'           => 'nullable|string|max:100',
+            'address'        => 'nullable|string|max:500',
+            'blood_type'     => 'nullable|in:A+,A-,B+,B-,AB+,AB-,O+,O-',
+            'allergies'      => 'nullable|string|max:1000',
+            'insurance_info' => 'nullable|string|max:500',
+            'medical_history'=> 'nullable|string|max:3000',
         ]);
 
         $patient = Patient::create($data);
@@ -90,16 +94,19 @@ class PatientController extends Controller
     public function update(Request $request, Patient $patient)
     {
         $data = $request->validate([
-            'first_name'    => 'required|string|max:100',
-            'last_name'     => 'required|string|max:100',
-            'date_of_birth' => 'required|date|before:today',
-            'gender'        => 'required|in:male,female,other',
-            'phone'         => 'required|string|max:20',
-            'email'         => 'nullable|email|max:150',
-            'address'       => 'nullable|string|max:500',
-            'blood_type'    => 'nullable|in:A+,A-,B+,B-,AB+,AB-,O+,O-',
-            'allergies'     => 'nullable|string|max:1000',
-            'notes'         => 'nullable|string|max:2000',
+            'first_name'     => 'required|string|max:100',
+            'last_name'      => 'required|string|max:100',
+            'date_of_birth'  => 'required|date|before:today',
+            'gender'         => 'required|in:male,female,other',
+            'phone'          => 'required|string|max:20',
+            'occupation'     => 'nullable|string|max:150',
+            'province'       => 'nullable|string|max:100',
+            'city'           => 'nullable|string|max:100',
+            'address'        => 'nullable|string|max:500',
+            'blood_type'     => 'nullable|in:A+,A-,B+,B-,AB+,AB-,O+,O-',
+            'allergies'      => 'nullable|string|max:1000',
+            'insurance_info' => 'nullable|string|max:500',
+            'medical_history'=> 'nullable|string|max:3000',
         ]);
 
         $patient->update($data);
@@ -117,9 +124,62 @@ class PatientController extends Controller
             ->with('toast_success', 'Patient updated successfully.');
     }
 
+    public function addNote(Request $request, Patient $patient)
+    {
+        $data = $request->validate([
+            'note_text' => 'required|string|max:2000',
+        ]);
+
+        // Decode existing notes (support legacy plain text)
+        $existing = [];
+        if ($patient->notes) {
+            $decoded = json_decode($patient->notes, true);
+            $existing = is_array($decoded) ? $decoded : [
+                ['text' => $patient->notes, 'author' => 'Legacy', 'created_at' => now('Asia/Manila')->toDateString()]
+            ];
+        }
+
+        // Duplicate prevention — same author, same text, same day
+        $today      = now('Asia/Manila')->toDateString();
+        $noteText   = trim($data['note_text']);
+        $authorName = Auth::user()->full_name;
+        foreach ($existing as $note) {
+            $noteDate = isset($note['created_at'])
+                ? \Carbon\Carbon::parse($note['created_at'])->toDateString()
+                : '';
+            if ($noteDate === $today
+                && trim($note['text'] ?? '') === $noteText
+                && ($note['author'] ?? '') === $authorName) {
+                return redirect()
+                    ->route(Auth::user()->role . '.patients.show', $patient)
+                    ->with('toast_error', 'This note was already added today.');
+            }
+        }
+
+        // Append new note — store date only (PHT)
+        $existing[] = [
+            'text'       => $noteText,
+            'author'     => $authorName,
+            'role'       => Auth::user()->role,
+            'created_at' => $today, // date only, PHT
+        ];
+
+        $patient->update(['notes' => json_encode($existing)]);
+
+        ActivityLog::log(
+            action:      'patient.note_added',
+            description: "Added note to patient: {$patient->full_name}",
+            severity:    'info',
+            subject:     $patient,
+        );
+
+        $role = Auth::user()->role;
+        return redirect()
+            ->route("{$role}.patients.show", $patient)
+            ->with('toast_success', 'Note added successfully.');
+    }
     public function destroy(Patient $patient)
     {
-        // Prevent deleting patients with finalized visit records
         $finalizedVisits = $patient->visits()->where('status', 'finalized')->count();
         if ($finalizedVisits > 0) {
             return back()->with('toast_error', "Cannot delete {$patient->full_name} — they have {$finalizedVisits} finalized visit record(s). Archive instead.");

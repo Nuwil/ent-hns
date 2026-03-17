@@ -34,6 +34,13 @@
                 <span>Dashboard</span>
             </a>
 
+            <div class="nav-section-label">Insights</div>
+            <a href="{{ route('admin.analytics') }}"
+               class="nav-item {{ $isActive('admin.analytics') }}">
+                <i class="bi bi-bar-chart-fill"></i>
+                <span>Analytics</span>
+            </a>
+
             <div class="nav-section-label">System</div>
             <a href="{{ route('admin.settings') }}"
                class="nav-item {{ $isActive('admin.settings') }}">

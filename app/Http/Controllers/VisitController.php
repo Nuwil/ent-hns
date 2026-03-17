@@ -19,35 +19,40 @@ class VisitController extends Controller
     public function storeIntake(Request $request, Patient $patient)
     {
         $data = $request->validate([
-            'appointment_id'   => 'nullable|exists:appointments,id',
+            'appointment_id'     => 'nullable|exists:appointments,id',
+            'doctor_id'          => 'nullable|exists:users,id',
             'ent_classification' => 'required|string|max:100',
-            'chief_complaint'  => 'required|string|max:500',
-            'blood_pressure'   => 'nullable|string|max:20',
-            'heart_rate'       => 'nullable|integer|min:20|max:300',
-            'temperature'      => 'nullable|numeric|min:30|max:45',
-            'weight'           => 'nullable|numeric|min:1|max:500',
-            'allergies_note'   => 'nullable|string|max:500',
-            'intake_notes'     => 'nullable|string|max:1000',
+            'chief_complaint'    => 'required|string|max:500',
+            'blood_pressure'     => 'nullable|string|max:20',
+            'weight'             => 'nullable|numeric|min:1|max:500',
+            'height'             => 'nullable|numeric|min:30|max:250',
+            'intake_notes'       => 'nullable|string|max:1000',
         ]);
 
-        // Get doctor from linked appointment or null
-        $doctorId = null;
-        if (!empty($data['appointment_id'])) {
+        // Resolve doctor: explicit selection > appointment doctor > fallback
+        $doctorId = $data['doctor_id'] ?? null;
+        if (!$doctorId && !empty($data['appointment_id'])) {
             $doctorId = Appointment::find($data['appointment_id'])?->doctor_id;
+        }
+        if (!$doctorId) {
+            $doctorId = $patient->appointments()->latest()->value('doctor_id') ?? Auth::id();
         }
 
         Visit::create([
-            'patient_id'        => $patient->id,
-            'doctor_id'         => $doctorId ?? $patient->appointments()->latest()->value('doctor_id') ?? Auth::id(),
-            'appointment_id'    => $data['appointment_id'] ?? null,
-            'visited_at'        => now(),
+            'patient_id'         => $patient->id,
+            'doctor_id'          => $doctorId,
+            'appointment_id'     => $data['appointment_id'] ?? null,
+            'visited_at'         => now(),
             'ent_classification' => $data['ent_classification'],
-            'chief_complaint'   => $data['chief_complaint'],
-            'diagnosis'         => '', // empty until doctor fills it
-            'notes'             => $this->formatVitals($data),
-            'prescriptions'     => [],
-            'recorded_by'       => 'secretary',
-            'status'            => Visit::STATUS_PENDING,
+            'chief_complaint'    => $data['chief_complaint'],
+            'blood_pressure'     => $data['blood_pressure'] ?? null,
+            'weight'             => $data['weight'] ?? null,
+            'height'             => $data['height'] ?? null,
+            'diagnosis'          => '',
+            'notes'              => $data['intake_notes'] ?? null,
+            'prescriptions'      => [],
+            'recorded_by'        => 'secretary',
+            'status'             => Visit::STATUS_PENDING,
         ]);
 
         ActivityLog::log(
@@ -103,11 +108,13 @@ class VisitController extends Controller
             'appointment_id'     => 'nullable|exists:appointments,id',
             'ent_classification' => 'required|string|max:100',
             'chief_complaint'    => 'required|string|max:500',
-            'history_of_illness' => 'nullable|string|max:3000',
-            'exam_findings'      => 'nullable|string|max:3000',
+            'history'            => 'nullable|string|max:3000',
+            'blood_pressure'     => 'nullable|string|max:20',
+            'weight'             => 'nullable|numeric|min:1|max:500',
+            'height'             => 'nullable|numeric|min:30|max:250',
+            'physical_exam'      => 'nullable|string|max:3000',
             'diagnosis'          => 'required|string|max:1000',
-            'treatment_plan'     => 'nullable|string|max:3000',
-            'notes'              => 'nullable|string|max:2000',
+            'plan_instructions'  => 'nullable|string|max:2000',
             'follow_up_date'     => 'nullable|date|after:today',
             'prescriptions'      => 'nullable|string',
         ]);
@@ -119,23 +126,25 @@ class VisitController extends Controller
         }
 
         $visit = Visit::create([
-            'patient_id'         => $patient->id,
-            'doctor_id'          => Auth::id(),
-            'appointment_id'     => $data['appointment_id'] ?? null,
-            'visited_at'         => now(),
+            'patient_id'          => $patient->id,
+            'doctor_id'           => Auth::id(),
+            'appointment_id'      => $data['appointment_id'] ?? null,
+            'visited_at'          => now(),
             'ent_classification'  => $data['ent_classification'],
-            'chief_complaint'    => $data['chief_complaint'],
-            'history_of_illness' => $data['history_of_illness'] ?? null,
-            'exam_findings'      => $data['exam_findings'] ?? null,
-            'diagnosis'          => $data['diagnosis'],
-            'treatment_plan'     => $data['treatment_plan'] ?? null,
-            'notes'              => $data['notes'] ?? null,
-            'follow_up_date'     => $data['follow_up_date'] ?? null,
-            'prescriptions'      => $prescriptions,
-            'recorded_by'        => 'doctor',
-            'status'             => Visit::STATUS_FINALIZED,
-            'finalized_by'       => Auth::id(),
-            'finalized_at'       => now(),
+            'chief_complaint'     => $data['chief_complaint'],
+            'history'             => $data['history'] ?? null,
+            'blood_pressure'      => $data['blood_pressure'] ?? null,
+            'weight'              => $data['weight'] ?? null,
+            'height'              => $data['height'] ?? null,
+            'physical_exam'       => $data['physical_exam'] ?? null,
+            'diagnosis'           => $data['diagnosis'],
+            'plan_instructions'   => $data['plan_instructions'] ?? null,
+            'follow_up_date'      => $data['follow_up_date'] ?? null,
+            'prescriptions'       => $prescriptions,
+            'recorded_by'         => 'doctor',
+            'status'              => Visit::STATUS_FINALIZED,
+            'finalized_by'        => Auth::id(),
+            'finalized_at'        => now(),
         ]);
 
         // Mark appointment as completed
@@ -187,15 +196,16 @@ class VisitController extends Controller
         }
 
         $data = $request->validate([
-            'ent_classification' => 'required|string|max:100',
-            'chief_complaint'    => 'required|string|max:500',
-            'history_of_illness' => 'nullable|string|max:3000',
-            'exam_findings'      => 'nullable|string|max:3000',
-            'diagnosis'          => 'nullable|string|max:1000',
-            'treatment_plan'     => 'nullable|string|max:3000',
-            'notes'              => 'nullable|string|max:2000',
-            'follow_up_date'     => 'nullable|date',
-            'prescriptions'      => 'nullable|string',
+            'ent_classification'  => 'required|string|max:100',
+            'chief_complaint'     => 'required|string|max:500',
+            'history'             => 'nullable|string|max:3000',
+            'blood_pressure'      => 'nullable|string|max:20',
+            'physical_exam'       => 'nullable|string|max:3000',
+            'diagnosis'           => 'nullable|string|max:1000',
+            'treatment_plan'      => 'nullable|string|max:3000',
+            'plan_instructions'   => 'nullable|string|max:2000',
+            'follow_up_date'      => 'nullable|date',
+            'prescriptions'       => 'nullable|string',
         ]);
 
         $prescriptions = [];
@@ -207,11 +217,12 @@ class VisitController extends Controller
         $visit->update([
             'ent_classification'  => $data['ent_classification'],
             'chief_complaint'     => $data['chief_complaint'],
-            'history_of_illness'  => $data['history_of_illness'] ?? null,
-            'exam_findings'       => $data['exam_findings'] ?? null,
+            'history'             => $data['history'] ?? null,
+            'blood_pressure'      => $data['blood_pressure'] ?? $visit->blood_pressure,
+            'physical_exam'       => $data['physical_exam'] ?? null,
             'diagnosis'           => $data['diagnosis'] ?? null,
             'treatment_plan'      => $data['treatment_plan'] ?? null,
-            'notes'               => $data['notes'] ?? null,
+            'plan_instructions'   => $data['plan_instructions'] ?? null,
             'follow_up_date'      => $data['follow_up_date'] ?? null,
             'prescriptions'       => $prescriptions,
             'doctor_id'           => Auth::id(),
@@ -234,15 +245,16 @@ class VisitController extends Controller
         }
 
         $data = $request->validate([
-            'ent_classification' => 'required|string|max:100',
-            'chief_complaint'    => 'required|string|max:500',
-            'history_of_illness' => 'nullable|string|max:3000',
-            'exam_findings'      => 'nullable|string|max:3000',
-            'diagnosis'          => 'required|string|max:1000',
-            'treatment_plan'     => 'nullable|string|max:3000',
-            'notes'              => 'nullable|string|max:2000',
-            'follow_up_date'     => 'nullable|date',
-            'prescriptions'      => 'nullable|string',
+            'ent_classification'  => 'required|string|max:100',
+            'chief_complaint'     => 'required|string|max:500',
+            'history'             => 'nullable|string|max:3000',
+            'blood_pressure'      => 'nullable|string|max:20',
+            'physical_exam'       => 'nullable|string|max:3000',
+            'diagnosis'           => 'required|string|max:1000',
+            'treatment_plan'      => 'nullable|string|max:3000',
+            'plan_instructions'   => 'nullable|string|max:2000',
+            'follow_up_date'      => 'nullable|date',
+            'prescriptions'       => 'nullable|string',
         ]);
 
         $prescriptions = [];
@@ -254,11 +266,12 @@ class VisitController extends Controller
         $visit->update([
             'ent_classification'  => $data['ent_classification'],
             'chief_complaint'     => $data['chief_complaint'],
-            'history_of_illness'  => $data['history_of_illness'] ?? null,
-            'exam_findings'       => $data['exam_findings'] ?? null,
+            'history'             => $data['history'] ?? null,
+            'blood_pressure'      => $data['blood_pressure'] ?? $visit->blood_pressure,
+            'physical_exam'       => $data['physical_exam'] ?? null,
             'diagnosis'           => $data['diagnosis'],
             'treatment_plan'      => $data['treatment_plan'] ?? null,
-            'notes'               => $data['notes'] ?? null,
+            'plan_instructions'   => $data['plan_instructions'] ?? null,
             'follow_up_date'      => $data['follow_up_date'] ?? null,
             'prescriptions'       => $prescriptions,
             'doctor_id'           => Auth::id(),
@@ -271,6 +284,18 @@ class VisitController extends Controller
         if ($visit->appointment_id) {
             Appointment::where('id', $visit->appointment_id)
                 ->update(['status' => Appointment::STATUS_COMPLETED]);
+        }
+
+        // Auto-create follow-up appointment if follow_up_date was set
+        if (!empty($data['follow_up_date'])) {
+            Appointment::create([
+                'patient_id'   => $patient->id,
+                'doctor_id'    => Auth::id(),
+                'scheduled_at' => \Carbon\Carbon::parse($data['follow_up_date'])->setTime(13, 30),
+                'reason'       => 'Follow-up: ' . $visit->chief_complaint,
+                'status'       => Appointment::STATUS_PENDING,
+                'notes'        => 'Auto-created from visit follow-up date.',
+            ]);
         }
 
         ActivityLog::log(
@@ -302,27 +327,43 @@ class VisitController extends Controller
     public static function entComplaintsList(): array
     {
         return [
-            'Otology (Ear)' => [
-                'Ear pain (Otalgia)', 'Hearing loss', 'Ear discharge (Otorrhea)',
-                'Tinnitus (Ringing in ear)', 'Ear fullness / blocked ear',
-                'Vertigo / Dizziness', 'Itchy ear', 'Foreign body in ear',
-            ],
-            'Rhinology (Nose)' => [
-                'Nasal congestion / Blocked nose', 'Runny nose (Rhinorrhea)',
-                'Nosebleed (Epistaxis)', 'Loss of smell (Anosmia)',
-                'Facial pain / pressure', 'Post-nasal drip', 'Sneezing',
-                'Foreign body in nose',
-            ],
-            'Laryngology (Throat / Voice)' => [
-                'Sore throat', 'Hoarseness / Voice change',
-                'Difficulty swallowing (Dysphagia)', 'Throat clearing',
-                'Cough', 'Globus sensation (lump in throat)', 'Stridor / Noisy breathing',
-            ],
             'Head & Neck' => [
-                'Neck mass / lump', 'Neck pain', 'Facial swelling',
-                'Mouth sore / ulcer', 'Difficulty opening mouth (Trismus)',
+                'Difficulty opening mouth (Trismus)', 'Facial swelling',
+                'Mouth sore / ulcer', 'Neck mass / lump', 'Neck pain',
                 'Salivary gland swelling', 'Thyroid swelling',
             ],
+            'Laryngology (Throat / Voice)' => [
+                'Cough', 'Difficulty swallowing (Dysphagia)',
+                'Globus sensation (lump in throat)', 'Hoarseness / Voice change',
+                'Sore throat', 'Stridor / Noisy breathing', 'Throat clearing',
+            ],
+            'Otology (Ear)' => [
+                'Ear discharge (Otorrhea)', 'Ear fullness / blocked ear',
+                'Ear pain (Otalgia)', 'Foreign body in ear',
+                'Hearing loss', 'Itchy ear',
+                'Tinnitus (Ringing in ear)', 'Vertigo / Dizziness',
+            ],
+            'Rhinology (Nose)' => [
+                'Facial pain / pressure', 'Foreign body in nose',
+                'Loss of smell (Anosmia)', 'Nasal congestion / Blocked nose',
+                'Nosebleed (Epistaxis)', 'Post-nasal drip',
+                'Runny nose (Rhinorrhea)', 'Sneezing',
+            ],
+            'Others' => ['Others (specify below)'],
         ];
+    }
+
+    /**
+     * Maps a chief complaint back to its ENT classification automatically.
+     */
+    public static function ccToEntMap(): array
+    {
+        $map = [];
+        foreach (self::entComplaintsList() as $cat => $complaints) {
+            foreach ($complaints as $c) {
+                $map[$c] = $cat;
+            }
+        }
+        return $map;
     }
 }
