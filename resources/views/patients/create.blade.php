@@ -61,14 +61,6 @@
                                 @error('gender')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label fw-semibold">Blood Type</label>
-                                <select name="blood_type" class="form-select">
-                                    <option value="">Unknown</option>
-                                    @foreach(['A+','A-','B+','B-','AB+','AB-','O+','O-'] as $bt)
-                                        <option value="{{ $bt }}" {{ old('blood_type') === $bt ? 'selected' : '' }}>{{ $bt }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold">Phone Number <span class="text-danger">*</span></label>
                                 <input type="text" name="phone"

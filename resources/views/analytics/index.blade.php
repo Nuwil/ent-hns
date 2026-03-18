@@ -283,6 +283,24 @@
                             </div>
                         </div>
                     </div>
+
+                    {{-- Predictive Forecast --}}
+                    <div class="col-12">
+                        <div class="card-panel">
+                            <div class="card-panel-header">
+                                <div class="card-panel-title">
+                                    <i class="bi bi-graph-up-arrow me-2 text-primary"></i>
+                                    Predictive Forecast — Next 4 Weeks
+                                    <span class="badge bg-primary ms-2" style="font-size:10px;font-weight:600">AI</span>
+                                </div>
+                                <span class="text-muted small">Based on historical visit patterns using linear regression</span>
+                            </div>
+                            <div class="card-panel-body">
+                                <canvas id="forecastChart" height="70"></canvas>
+                                <div id="forecastNarrative" class="analytics-narrative mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -546,6 +564,9 @@ async function loadClinic() {
 
     // ── Generate narratives ───────────────────────────────────
     generateClinicNarratives(data);
+
+    // ── Generate forecast ─────────────────────────────────────
+    generateForecast(data.visitTrend);
 }
 
 // ── Doctor Tab ────────────────────────────────────────────────
@@ -728,6 +749,223 @@ function kpiCard(icon, cls, val, label, sub) {
 function narrative(el, text) {
     const node = document.getElementById(el);
     if (node) node.innerHTML = `<i class="bi bi-lightbulb me-1 text-primary"></i>${text}`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ADVANCED PREDICTIVE FORECASTING ENGINE
+// Weekday seasonality + OLS regression + smoothing + clamping
+// ══════════════════════════════════════════════════════════════
+
+function generateForecast(visitTrend) {
+    const values = visitTrend.values || [];
+    const labels = visitTrend.labels || [];
+    const n      = values.length;
+
+    // ── Determine forecast horizon based on range ──────────────
+    const forecastDays = n <= 7 ? 7 : 30;
+
+    if (n < 1) {
+        narrative('forecastNarrative', 'Not enough historical data to generate a forecast. Record more visits to enable predictions.');
+        return;
+    }
+
+    // ── Step 1: Global mean ────────────────────────────────────
+    const globalMean = values.reduce((a, b) => a + b, 0) / n;
+
+    // ── Step 2: Lookback window ────────────────────────────────
+    const lookback = Math.min(28, Math.max(1, n));
+
+    // ── Step 3: Weekday seasonality ────────────────────────────
+    // Parse dates from labels (format: "Mar 1", "Mar 2", etc.)
+    const weekdaySums   = new Array(7).fill(0);
+    const weekdayCounts = new Array(7).fill(0);
+
+    // Try to parse dates from labels
+    const parsedDates = labels.map(lbl => {
+        const d = new Date(lbl + ', ' + new Date().getFullYear());
+        return isNaN(d) ? null : d;
+    });
+
+    parsedDates.forEach((d, i) => {
+        if (d) {
+            const wd = d.getDay();
+            weekdaySums[wd]   += values[i];
+            weekdayCounts[wd] += 1;
+        }
+    });
+
+    const weekdayMean = weekdaySums.map((sum, wd) =>
+        weekdayCounts[wd] > 0 ? sum / weekdayCounts[wd] : globalMean
+    );
+
+    // ── Step 4: Moving average smoothing ──────────────────────
+    const w = Math.min(7, Math.max(1, Math.floor(lookback / 4)));
+    const half = Math.floor(w / 2);
+    const smoothed = values.map((_, i) => {
+        const start = Math.max(0, i - half);
+        const end   = Math.min(n - 1, i + half);
+        let sum = 0;
+        for (let j = start; j <= end; j++) sum += values[j];
+        return sum / (end - start + 1);
+    });
+
+    // ── Step 5: OLS regression on last `len` smoothed days ────
+    const len   = Math.min(30, Math.max(2, Math.floor(n / 2)));
+    const start = Math.max(0, n - len);
+    const regressSlice = smoothed.slice(start);
+    const rLen  = regressSlice.length;
+
+    let sumX = 0, sumY = 0, sumXX = 0, sumXY = 0;
+    regressSlice.forEach((y, i) => {
+        sumX  += i;
+        sumY  += y;
+        sumXX += i * i;
+        sumXY += i * y;
+    });
+
+    const denom = rLen * sumXX - sumX * sumX;
+    let slope = Math.abs(denom) > 1e-9
+        ? (rLen * sumXY - sumX * sumY) / denom
+        : 0;
+
+    // ── Step 6: Clamp slope ────────────────────────────────────
+    const maxSlope = Math.max(1, 0.5 * globalMean);
+    slope = Math.max(-maxSlope, Math.min(maxSlope, slope));
+
+    // ── Step 7: Fallback if low data ──────────────────────────
+    const lastLevel = smoothed.length > 0 ? smoothed[smoothed.length - 1] : globalMean;
+    const useFallback = n < 3;
+    const avgLast = values.slice(Math.max(0, n - lookback))
+        .reduce((a, b) => a + b, 0) / Math.min(lookback, n);
+
+    // ── Step 8: Build forecast ─────────────────────────────────
+    const forecastVals   = [];
+    const forecastLabels = [];
+    const lastDate = parsedDates[parsedDates.length - 1] || new Date();
+
+    for (let i = 1; i <= forecastDays; i++) {
+        const futureDate = new Date(lastDate);
+        futureDate.setDate(lastDate.getDate() + i);
+        const wd        = futureDate.getDay();
+        const seasonAdj = weekdayMean[wd] - globalMean;
+
+        let predicted;
+        if (useFallback) {
+            predicted = avgLast;
+        } else {
+            predicted = lastLevel + slope * i + seasonAdj;
+        }
+
+        forecastVals.push(Math.max(0, Math.round(predicted)));
+
+        // Label: "Mar 19", "Mar 20", etc.
+        const lbl = futureDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        forecastLabels.push(lbl);
+    }
+
+    // ── Step 9: Build chart ────────────────────────────────────
+    // Show last 14 historical + all forecast to keep chart readable
+    const histSlice   = values.slice(Math.max(0, n - 14));
+    const labelSlice  = labels.slice(Math.max(0, n - 14));
+    const allLabels   = [...labelSlice, ...forecastLabels];
+    const histData    = [...histSlice, ...new Array(forecastDays).fill(null)];
+    const foreData    = [
+        ...new Array(histSlice.length - 1).fill(null),
+        histSlice[histSlice.length - 1],   // connect at last real point
+        ...forecastVals
+    ];
+
+    destroyChart('forecastChart');
+    charts['forecastChart'] = new Chart(document.getElementById('forecastChart'), {
+        type: 'line',
+        data: {
+            labels: allLabels,
+            datasets: [
+                {
+                    label: 'Historical Visits',
+                    data: histData,
+                    borderColor: 'rgba(59,130,246,0.9)',
+                    backgroundColor: 'rgba(59,130,246,0.08)',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    fill: true,
+                    tension: 0.35,
+                    spanGaps: false,
+                },
+                {
+                    label: 'Forecasted Visits',
+                    data: foreData,
+                    borderColor: 'rgba(234,179,8,1)',
+                    backgroundColor: 'rgba(234,179,8,0.07)',
+                    borderWidth: 2.5,
+                    borderDash: [7, 4],
+                    pointRadius: 4,
+                    pointBackgroundColor: 'rgba(234,179,8,1)',
+                    fill: false,
+                    tension: 0.35,
+                    spanGaps: false,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: true, position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ctx.raw !== null
+                            ? `${ctx.dataset.label}: ${ctx.raw} visits`
+                            : null
+                    }
+                }
+            },
+            scales: {
+                y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                x: { grid: { color: 'rgba(0,0,0,0.03)' }, ticks: { maxTicksLimit: 20 } }
+            }
+        }
+    });
+
+    // ── Step 10: Forecast summary narrative ───────────────────
+    const half1 = Math.floor(forecastDays / 2);
+    const half2 = forecastDays - half1;
+    const firstHalfAvg = forecastVals.slice(0, half1).reduce((a,b)=>a+b,0) / half1;
+    const lastHalfAvg  = forecastVals.slice(half1).reduce((a,b)=>a+b,0) / half2;
+    const pct = firstHalfAvg > 0
+        ? ((lastHalfAvg - firstHalfAvg) / firstHalfAvg) * 100
+        : (lastHalfAvg - firstHalfAvg) * 100;
+
+    const maxForecast  = Math.max(...forecastVals);
+    const peakDay      = forecastLabels[forecastVals.indexOf(maxForecast)];
+    const avgForecast  = Math.round(forecastVals.reduce((a,b)=>a+b,0) / forecastDays);
+
+    let trendMsg, trendColor, suggestion;
+    if (pct > 5) {
+        trendMsg   = 'likely <strong class="text-success">increasing</strong>';
+        suggestion = maxForecast > 10
+            ? 'Consider scheduling additional doctor availability to handle peak demand.'
+            : 'Monitor closely and ensure appointment slots are available.';
+    } else if (pct < -5) {
+        trendMsg   = 'likely <strong class="text-danger">declining</strong>';
+        suggestion = 'Review appointment outreach and follow-up booking practices to maintain patient volume.';
+    } else {
+        trendMsg   = '<strong class="text-primary">relatively stable</strong>';
+        suggestion = 'Staffing and scheduling can remain consistent with current levels.';
+    }
+
+    const slopeStr = slope > 0
+        ? `+${slope.toFixed(2)} visits/day trend`
+        : `${slope.toFixed(2)} visits/day trend`;
+
+    narrative('forecastNarrative',
+        `Using <strong>OLS regression with weekday seasonality</strong> (${slopeStr}), 
+        demand is ${trendMsg} over the next ${forecastDays} days. 
+        Projected average: <strong>${avgForecast} visits/day</strong>. 
+        Peak expected on <strong>${peakDay}</strong> with up to <strong>${maxForecast} visits</strong>. 
+        ${useFallback ? '<em>(Limited data — using simple average fallback)</em> ' : ''}
+        ${suggestion}`
+    );
 }
 
 // ── Static smart narratives based on data ─────────────────────

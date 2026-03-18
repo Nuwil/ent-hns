@@ -39,7 +39,7 @@
                         <th>Patient</th>
                         <th>Age / Gender</th>
                         <th>Phone</th>
-                        <th>Blood Type</th>
+                        <!-- <th>Blood Type</th> -->
                         <th>Visits</th>
                         <th>Registered</th>
                         <th></th>
@@ -61,12 +61,12 @@
                             </td>
                             <td>{{ $patient->age }} · {{ ucfirst($patient->gender) }}</td>
                             <td>{{ $patient->phone }}</td>
-                            <td>
+                            <!-- <td>
                                 @if($patient->blood_type)
                                     <span class="badge bg-danger">{{ $patient->blood_type }}</span>
                                 @else
                                     <span class="text-muted">—</span>
-                                @endif
+                                @endif -->
                             </td>
                             <td>{{ $patient->visits_count }}</td>
                             <td>{{ $patient->created_at->format('M j, Y') }}</td>

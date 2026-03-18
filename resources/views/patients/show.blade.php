@@ -626,41 +626,125 @@
 
 {{-- Secretary edit intake modal --}}
 <div class="modal fade" id="editIntakeModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Visit Intake</h5>
+                <div>
+                    <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Visit Intake</h5>
+                    <div class="text-muted small">You can only edit while status is <strong>Awaiting Doctor</strong></div>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" id="editIntakeForm">
+            <form method="POST" id="editIntakeForm" onsubmit="return false">
                 @csrf @method('PUT')
                 <div class="modal-body">
-                    <div class="alert alert-warning d-flex gap-2 py-2 mb-3" style="font-size:13px">
-                        <i class="bi bi-exclamation-triangle-fill mt-1"></i>
-                        <span>You can only edit this entry while it's <strong>Awaiting Doctor</strong>. Once the doctor opens it, editing is locked.</span>
+
+                    {{-- Doctor selector --}}
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Assigned Doctor <span class="text-danger">*</span></label>
+                        <select name="doctor_id" id="editDoctorSelect" class="form-select" required>
+                            <option value="">Select doctor...</option>
+                            @foreach($doctors as $doc)
+                                <option value="{{ $doc->id }}">{{ $doc->name }}</option>
+                            @endforeach
+                        </select>
                     </div>
-                    <div class="row g-3">
-                        <div class="col-md-5">
-                            <label class="form-label fw-semibold">ENT Classification <span class="text-danger">*</span></label>
-                            <select name="ent_classification" id="editEntClass" class="form-select" required
-                                    onchange="updateEditComplaintList(this.value)">
-                                <option value="">Select category...</option>
-                                @foreach($entComplaints as $cat => $complaints)
-                                    <option value="{{ $cat }}">{{ $cat }}</option>
-                                @endforeach
-                            </select>
+
+                    {{-- Tabs --}}
+                    <ul class="nav nav-tabs mb-3" id="editIntakeTabs">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#eiComplaint">
+                                <i class="bi bi-chat-square-text me-1"></i>Chief Complaint
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#eiVitals">
+                                <i class="bi bi-heart-pulse me-1"></i>Vital Signs
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content">
+                        {{-- Complaint Tab --}}
+                        <div class="tab-pane fade show active" id="eiComplaint">
+                            <div class="row g-3">
+                                <div class="col-md-7">
+                                    <label class="form-label fw-semibold">Chief Complaint <span class="text-danger">*</span></label>
+                                    <select id="editCcDropdown" class="form-select" onchange="editCcChanged(this.value)">
+                                        <option value="">Select complaint...</option>
+                                        @foreach($entComplaints as $cat => $complaints)
+                                            @if($cat !== 'Others')
+                                                <optgroup label="{{ $cat }}">
+                                                    @foreach($complaints as $c)
+                                                        <option value="{{ $c }}" data-cat="{{ $cat }}">{{ $c }}</option>
+                                                    @endforeach
+                                                </optgroup>
+                                            @endif
+                                        @endforeach
+                                        <option value="Others">— Others (specify manually) —</option>
+                                    </select>
+                                    <input type="text" id="editCcOther" class="form-control mt-2"
+                                           placeholder="Describe complaint..." style="display:none">
+                                    <input type="hidden" name="chief_complaint" id="editCcHidden" required>
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label fw-semibold">ENT Classification <span class="text-danger">*</span></label>
+                                    <select name="ent_classification" id="editEntClass" class="form-select" required>
+                                        <option value="">Auto-filled from complaint...</option>
+                                        @foreach($entComplaints as $cat => $complaints)
+                                            @if($cat !== 'Others')
+                                                <option value="{{ $cat }}">{{ $cat }}</option>
+                                            @endif
+                                        @endforeach
+                                        <option value="Others">Others</option>
+                                    </select>
+                                    <div id="editEntAutoNote" class="text-muted mt-1" style="font-size:11px;display:none">
+                                        <i class="bi bi-magic me-1 text-primary"></i>Auto-filled from complaint
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Chief Complaint <span class="text-danger">*</span></label>
-                            <select name="chief_complaint" id="editComplaintSelect" class="form-select" required>
-                                <option value="">Select ENT classification first...</option>
-                            </select>
+
+                        {{-- Vitals Tab --}}
+                        <div class="tab-pane fade" id="eiVitals">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Blood Pressure</label>
+                                    <input type="text" name="blood_pressure" id="editBp"
+                                           class="form-control" placeholder="e.g. 120/80">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Weight</label>
+                                    <div class="input-group">
+                                        <input type="number" name="weight" id="editWeight"
+                                               class="form-control" placeholder="60" step="0.1" min="1" max="500">
+                                        <span class="input-group-text">kg</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Height <span class="text-muted small fw-normal">(if applicable)</span></label>
+                                    <div class="input-group">
+                                        <input type="number" name="height" id="editHeight"
+                                               class="form-control" placeholder="160" step="0.1" min="30" max="250">
+                                        <span class="input-group-text">cm</span>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label fw-semibold">Notes for Doctor</label>
+                                    <textarea name="intake_notes" id="editIntakeNotes"
+                                              class="form-control" rows="2"
+                                              placeholder="Anything the doctor should know..."></textarea>
+                                </div>
+                            </div>
                         </div>
                     </div>
+
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="button" class="btn btn-primary" onclick="submitEditIntake()">
+                        <i class="bi bi-check2 me-1"></i>Save Changes
+                    </button>
                 </div>
             </form>
         </div>
@@ -833,9 +917,16 @@
                                     </div>
                                     <div class="mt-3">
                                         <label class="form-label fw-semibold">Follow-up Date</label>
-                                        <input type="date" name="follow_up_date" class="form-control"
+                                        <input type="date" id="dvFollowUpDate"
+                                               class="form-control"
                                                style="max-width:200px"
-                                               min="{{ date('Y-m-d', strtotime('+1 day')) }}">
+                                               min="{{ date('Y-m-d', strtotime('+1 day')) }}"
+                                               onchange="document.getElementById('dvFollowUpHidden').value = this.value">
+                                        <input type="hidden" name="follow_up_date" id="dvFollowUpHidden">
+                                        <div class="text-muted small mt-1">
+                                            <i class="bi bi-calendar-check me-1 text-success"></i>
+                                            Setting a follow-up date will auto-book an appointment.
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1431,24 +1522,107 @@ function openSecretaryEdit(visit) {
     const form = document.getElementById('editIntakeForm');
     form.action = `/secretary/patients/{{ $patient->id }}/visits/${visit.id}`;
 
-    const entSel = document.getElementById('editEntClass');
-    entSel.value = visit.ent_classification || '';
-    updateEditComplaintList(visit.ent_classification, visit.chief_complaint);
+    // Doctor
+    const docSel = document.getElementById('editDoctorSelect');
+    if (docSel && visit.doctor_id) docSel.value = visit.doctor_id;
+
+    // Chief Complaint
+    const ccDropdown = document.getElementById('editCcDropdown');
+    const ccHidden   = document.getElementById('editCcHidden');
+    const ccOther    = document.getElementById('editCcOther');
+    const entSel     = document.getElementById('editEntClass');
+    const autoNote   = document.getElementById('editEntAutoNote');
+
+    // Try to find complaint in dropdown options
+    let found = false;
+    if (visit.chief_complaint) {
+        Array.from(ccDropdown.options).forEach(opt => {
+            if (opt.value === visit.chief_complaint) { found = true; }
+        });
+    }
+
+    if (found) {
+        ccDropdown.value = visit.chief_complaint;
+        ccHidden.value   = visit.chief_complaint;
+        ccOther.style.display = 'none';
+        entSel.value     = visit.ent_classification || '';
+        entSel.disabled  = true;
+        autoNote.style.display = 'block';
+    } else if (visit.chief_complaint) {
+        // It's a custom "Others" complaint
+        ccDropdown.value = 'Others';
+        ccOther.style.display = 'block';
+        ccOther.value    = visit.chief_complaint;
+        ccHidden.value   = visit.chief_complaint;
+        entSel.value     = visit.ent_classification || '';
+        entSel.disabled  = false;
+        autoNote.style.display = 'none';
+    }
+
+    // Vitals
+    document.getElementById('editBp').value           = visit.blood_pressure || '';
+    document.getElementById('editWeight').value       = visit.weight || '';
+    document.getElementById('editHeight').value       = visit.height || '';
+    document.getElementById('editIntakeNotes').value  = visit.notes || '';
 
     new bootstrap.Modal(document.getElementById('editIntakeModal')).show();
 }
 
-function updateEditComplaintList(category, selected = '') {
-    const select = document.getElementById('editComplaintSelect');
-    select.innerHTML = '<option value="">Select complaint...</option>';
-    if (entComplaints[category]) {
-        entComplaints[category].forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c; opt.textContent = c;
-            if (c === selected) opt.selected = true;
-            select.appendChild(opt);
-        });
+function editCcChanged(value) {
+    const ccHidden  = document.getElementById('editCcHidden');
+    const ccOther   = document.getElementById('editCcOther');
+    const entSel    = document.getElementById('editEntClass');
+    const autoNote  = document.getElementById('editEntAutoNote');
+
+    if (value === 'Others') {
+        ccOther.style.display = 'block';
+        ccOther.required = true;
+        ccHidden.value = '';
+        ccOther.oninput = () => { ccHidden.value = ccOther.value; };
+        entSel.value = '';
+        entSel.disabled = false;
+        autoNote.style.display = 'none';
+    } else if (value) {
+        ccOther.style.display = 'none';
+        ccOther.required = false;
+        ccHidden.value = value;
+        if (ccToEntMap[value]) {
+            entSel.value    = ccToEntMap[value];
+            entSel.disabled = true;
+            autoNote.style.display = 'block';
+        }
+    } else {
+        ccOther.style.display = 'none';
+        ccHidden.value = '';
+        entSel.value = '';
+        entSel.disabled = false;
+        autoNote.style.display = 'none';
     }
+}
+
+function submitEditIntake() {
+    const form    = document.getElementById('editIntakeForm');
+    const ccVal   = document.getElementById('editCcHidden').value.trim();
+    const entSel  = document.getElementById('editEntClass');
+
+    if (!ccVal) {
+        document.querySelector('[data-bs-target="#eiComplaint"]').click();
+        document.getElementById('editCcDropdown').classList.add('is-invalid');
+        setTimeout(() => document.getElementById('editCcDropdown').classList.remove('is-invalid'), 3000);
+        return;
+    }
+    if (!entSel.value) {
+        document.querySelector('[data-bs-target="#eiComplaint"]').click();
+        entSel.classList.add('is-invalid');
+        setTimeout(() => entSel.classList.remove('is-invalid'), 3000);
+        return;
+    }
+
+    // Re-enable ENT select so it submits
+    entSel.disabled = false;
+
+    form.onsubmit = null;
+    form.submit();
 }
 
 // Doctor — modal prescription builder
@@ -1681,7 +1855,7 @@ function dvConfirmFinalize() {
     const form      = document.getElementById('dvVisitForm');
     const ccInput   = document.getElementById('dvCcInput');
     const diagInput = form.querySelector('textarea[name="diagnosis"]');
-    const entSelect = form.querySelector('select[name="ent_classification"]');
+    const entSelect = document.getElementById('dvEntClass');
 
     if (!entSelect?.value) {
         document.querySelector('[data-bs-target="#dvSubjective"]').click();
@@ -1705,13 +1879,30 @@ function dvConfirmFinalize() {
     if (!confirm('Finalize this visit? It will be permanently locked and cannot be edited.')) return;
 
     // Re-enable ENT select in case it was disabled by auto-fill
-    const entSel = document.getElementById('dvEntClass');
-    if (entSel) entSel.disabled = false;
+    if (entSelect) entSelect.disabled = false;
+
+    // Sync chief complaint from Other input if needed
+    const ccOther = document.getElementById('dvCcOtherInput');
+    if (ccOther && ccOther.style.display !== 'none' && ccOther.value.trim()) {
+        ccInput.value = ccOther.value.trim();
+    }
 
     // Sync prescriptions
     document.getElementById('dvRxJson').value = JSON.stringify(dvPrescriptions);
 
-    // Bypass the onsubmit=false guard and submit for real
+    // ── Explicitly ensure follow_up_date is in the form ──────────
+    // The Plan tab may not be active, so we force-inject the value
+    const fuDate = document.getElementById('dvFollowUpDate');
+    let fuHidden = form.querySelector('input[name="follow_up_date"]');
+    if (!fuHidden) {
+        fuHidden = document.createElement('input');
+        fuHidden.type = 'hidden';
+        fuHidden.name = 'follow_up_date';
+        form.appendChild(fuHidden);
+    }
+    fuHidden.value = fuDate ? fuDate.value : '';
+
+    // Submit
     form.onsubmit = null;
     form.submit();
 }
@@ -1733,6 +1924,10 @@ document.getElementById('addVisitModal')?.addEventListener('hidden.bs.modal', ()
     document.getElementById('dvCcDropdown').value = '';
     document.getElementById('dvEntAutoNote').style.display = 'none';
     document.getElementById('dvEntManualNote').style.display = 'none';
+    const fuDate = document.getElementById('dvFollowUpDate');
+    if (fuDate) fuDate.value = '';
+    const fuHidden = document.getElementById('dvFollowUpHidden');
+    if (fuHidden) fuHidden.value = '';
     dvPrescriptions = [];
 });
 

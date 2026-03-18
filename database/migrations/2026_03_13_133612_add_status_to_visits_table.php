@@ -35,7 +35,7 @@ return new class extends Migration
     {
         Schema::table('visits', function (Blueprint $table) {
             // Drop foreign key constraint first before dropping the column
-            $table->dropForeignIdFor('finalized_by');
+            $table->dropForeignKey(['finalized_by']);
             $table->dropColumn([
                 'status', 'ent_classification', 'history_of_illness',
                 'exam_findings', 'treatment_plan', 'finalized_by', 'finalized_at',

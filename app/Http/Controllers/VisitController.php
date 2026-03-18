@@ -76,20 +76,23 @@ class VisitController extends Controller
         }
 
         $data = $request->validate([
+            'doctor_id'          => 'nullable|exists:users,id',
             'ent_classification' => 'required|string|max:100',
             'chief_complaint'    => 'required|string|max:500',
             'blood_pressure'     => 'nullable|string|max:20',
-            'heart_rate'         => 'nullable|integer|min:20|max:300',
-            'temperature'        => 'nullable|numeric|min:30|max:45',
             'weight'             => 'nullable|numeric|min:1|max:500',
-            'allergies_note'     => 'nullable|string|max:500',
+            'height'             => 'nullable|numeric|min:30|max:250',
             'intake_notes'       => 'nullable|string|max:1000',
         ]);
 
         $visit->update([
+            'doctor_id'          => $data['doctor_id'] ?? $visit->doctor_id,
             'ent_classification' => $data['ent_classification'],
             'chief_complaint'    => $data['chief_complaint'],
-            'notes'              => $this->formatVitals($data),
+            'blood_pressure'     => $data['blood_pressure'] ?? null,
+            'weight'             => $data['weight'] ?? null,
+            'height'             => $data['height'] ?? null,
+            'notes'              => $data['intake_notes'] ?? null,
         ]);
 
         return redirect()
@@ -115,7 +118,7 @@ class VisitController extends Controller
             'physical_exam'      => 'nullable|string|max:3000',
             'diagnosis'          => 'required|string|max:1000',
             'plan_instructions'  => 'nullable|string|max:2000',
-            'follow_up_date'     => 'nullable|date|after:today',
+            'follow_up_date'     => 'nullable|date',
             'prescriptions'      => 'nullable|string',
         ]);
 
@@ -153,6 +156,25 @@ class VisitController extends Controller
                 ->update(['status' => Appointment::STATUS_COMPLETED]);
         }
 
+        // Auto-create follow-up appointment if follow_up_date was set
+        if (!empty($data['follow_up_date'])) {
+            Appointment::create([
+                'patient_id'   => $patient->id,
+                'doctor_id'    => Auth::id(),
+                'scheduled_at' => \Carbon\Carbon::parse($data['follow_up_date'])->startOfDay(),
+                'reason'       => 'Follow-up: ' . $data['chief_complaint'],
+                'status'       => Appointment::STATUS_PENDING,
+                'notes'        => 'Auto-created from visit follow-up date.',
+            ]);
+
+            ActivityLog::log(
+                action:      'appointment.booked',
+                description: "Auto-booked follow-up appointment for: {$patient->full_name} on {$data['follow_up_date']}",
+                severity:    'info',
+                subject:     $patient,
+            );
+        }
+
         ActivityLog::log(
             action:      'visit.recorded',
             description: "Recorded and finalized visit for: {$patient->full_name}",
@@ -160,9 +182,14 @@ class VisitController extends Controller
             subject:     $patient,
         );
 
+        $msg = 'Visit recorded and finalized.';
+        if (!empty($data['follow_up_date'])) {
+            $msg .= ' Follow-up appointment booked for ' . \Carbon\Carbon::parse($data['follow_up_date'])->format('M j, Y') . '.';
+        }
+
         return redirect()
             ->route('doctor.patients.show', $patient)
-            ->with('toast_success', 'Visit recorded and finalized.');
+            ->with('toast_success', $msg);
     }
 
     // ================================================================
@@ -229,9 +256,28 @@ class VisitController extends Controller
             'status'              => Visit::STATUS_IN_PROGRESS,
         ]);
 
+        // Auto-book follow-up if date was set and not already booked for this date
+        if (!empty($data['follow_up_date'])) {
+            $alreadyBooked = Appointment::where('patient_id', $patient->id)
+                ->whereDate('scheduled_at', $data['follow_up_date'])
+                ->where('notes', 'like', '%Auto-created from visit follow-up%')
+                ->exists();
+
+            if (!$alreadyBooked) {
+                Appointment::create([
+                    'patient_id'   => $patient->id,
+                    'doctor_id'    => Auth::id(),
+                    'scheduled_at' => \Carbon\Carbon::parse($data['follow_up_date']),
+                    'reason'       => 'Follow-up: ' . $data['chief_complaint'],
+                    'status'       => Appointment::STATUS_PENDING,
+                    'notes'        => 'Auto-created from visit follow-up date.',
+                ]);
+            }
+        }
+
         return redirect()
             ->route('doctor.patients.show', $patient)
-            ->with('toast_success', 'Visit progress saved. Remember to finalize when complete.');
+            ->with('toast_success', 'Visit progress saved. Follow-up appointment booked if date was set.');
     }
 
     // ================================================================
@@ -291,11 +337,18 @@ class VisitController extends Controller
             Appointment::create([
                 'patient_id'   => $patient->id,
                 'doctor_id'    => Auth::id(),
-                'scheduled_at' => \Carbon\Carbon::parse($data['follow_up_date'])->setTime(13, 30),
+                'scheduled_at' => \Carbon\Carbon::parse($data['follow_up_date'])->startOfDay(),
                 'reason'       => 'Follow-up: ' . $visit->chief_complaint,
                 'status'       => Appointment::STATUS_PENDING,
                 'notes'        => 'Auto-created from visit follow-up date.',
             ]);
+
+            ActivityLog::log(
+                action:      'appointment.booked',
+                description: "Auto-booked follow-up appointment for: {$patient->full_name} on {$data['follow_up_date']}",
+                severity:    'info',
+                subject:     $patient,
+            );
         }
 
         ActivityLog::log(
@@ -349,7 +402,7 @@ class VisitController extends Controller
                 'Nosebleed (Epistaxis)', 'Post-nasal drip',
                 'Runny nose (Rhinorrhea)', 'Sneezing',
             ],
-            'Others' => ['Others (specify below)'],
+            'Others' => ['Others'],
         ];
     }
 

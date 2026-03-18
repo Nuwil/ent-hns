@@ -59,10 +59,13 @@ class AppointmentController extends Controller
             'patient_id' => $a->patient_id,
         ]);
 
+        $isAdmin = $role === 'admin';
+
         return view('appointments.index', compact(
             'appointments', 'doctors', 'patients',
             'status', 'date',
-            'calendarAppointments', 'calMonth', 'calYear'
+            'calendarAppointments', 'calMonth', 'calYear',
+            'isAdmin'
         ));
     }
 

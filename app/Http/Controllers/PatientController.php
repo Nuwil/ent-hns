@@ -22,8 +22,8 @@ class PatientController extends Controller
                   ->orWhere('email', 'like', "%{$search}%");
             })
             ->withCount('visits')
-            ->orderBy('first_name')
             ->orderBy('last_name')
+            ->orderBy('first_name')
             ->paginate(15)
             ->withQueryString();
 
@@ -47,7 +47,6 @@ class PatientController extends Controller
             'province'       => 'nullable|string|max:100',
             'city'           => 'nullable|string|max:100',
             'address'        => 'nullable|string|max:500',
-            'blood_type'     => 'nullable|in:A+,A-,B+,B-,AB+,AB-,O+,O-',
             'allergies'      => 'nullable|string|max:1000',
             'insurance_info' => 'nullable|string|max:500',
             'medical_history'=> 'nullable|string|max:3000',
@@ -103,7 +102,6 @@ class PatientController extends Controller
             'province'       => 'nullable|string|max:100',
             'city'           => 'nullable|string|max:100',
             'address'        => 'nullable|string|max:500',
-            'blood_type'     => 'nullable|in:A+,A-,B+,B-,AB+,AB-,O+,O-',
             'allergies'      => 'nullable|string|max:1000',
             'insurance_info' => 'nullable|string|max:500',
             'medical_history'=> 'nullable|string|max:3000',
