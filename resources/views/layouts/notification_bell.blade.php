@@ -1,95 +1,38 @@
 {{-- ================================================================
-     PASTE THIS ENTIRE FILE AS YOUR topnav.blade.php
+     NOTIFICATION BELL — paste this inside topnav.blade.php
+     Place it just before the user dropdown
      ================================================================ --}}
 
-<header class="app-topnav" id="appTopnav">
-    <div class="topnav-left">
-        <button class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle sidebar">
-            <i class="bi bi-list"></i>
-        </button>
-        <div class="topnav-breadcrumb">
-            <span class="topnav-page-title">@yield('page-title', 'Dashboard')</span>
-        </div>
-    </div>
+<div class="notification-wrapper" id="notifWrapper">
 
-    <div class="topnav-right">
-        {{-- Quick date display --}}
-        <div class="topnav-date d-none d-md-flex">
-            <i class="bi bi-calendar3 me-1"></i>
-            <span>{{ now()->format('l, F j, Y') }}</span>
-        </div>
+    {{-- Bell button --}}
+    <button class="notif-bell-btn" id="notifBellBtn" onclick="toggleNotifDropdown()" title="Notifications">
+        <i class="bi bi-bell-fill"></i>
+        <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+    </button>
 
-        <div class="topnav-divider d-none d-md-block"></div>
-
-        {{-- ── NOTIFICATION BELL ──────────────────────────────── --}}
-        <div class="notification-wrapper" id="notifWrapper">
-            <button class="notif-bell-btn" id="notifBellBtn"
-                    onclick="toggleNotifDropdown()" title="Notifications">
-                <i class="bi bi-bell-fill"></i>
-                <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+    {{-- Dropdown --}}
+    <div class="notif-dropdown" id="notifDropdown" style="display:none">
+        <div class="notif-dropdown-header">
+            <span class="notif-dropdown-title">
+                <i class="bi bi-bell me-2"></i>Notifications
+            </span>
+            <button class="notif-mark-all-btn" onclick="markAllRead()" title="Mark all as read">
+                <i class="bi bi-check2-all"></i> Clear all
             </button>
-
-            <div class="notif-dropdown" id="notifDropdown" style="display:none">
-                <div class="notif-dropdown-header">
-                    <span class="notif-dropdown-title">
-                        <i class="bi bi-bell me-2"></i>Notifications
-                    </span>
-                    <button class="notif-mark-all-btn" onclick="markAllRead()">
-                        <i class="bi bi-check2-all"></i> Clear all
-                    </button>
-                </div>
-                <div class="notif-list" id="notifList">
-                    <div class="notif-empty">
-                        <i class="bi bi-bell-slash d-block mb-2 fs-4"></i>
-                        No new notifications
-                    </div>
-                </div>
+        </div>
+        <div class="notif-list" id="notifList">
+            <div class="notif-empty">
+                <i class="bi bi-bell-slash d-block mb-2 fs-4"></i>
+                No new notifications
             </div>
         </div>
-
-        {{-- ── USER DROPDOWN ──────────────────────────────────── --}}
-        <div class="dropdown">
-            <button class="topnav-user-btn dropdown-toggle"
-                    type="button"
-                    data-bs-toggle="dropdown"
-                    aria-expanded="false">
-                <div class="topnav-avatar">
-                    {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
-                </div>
-                <span class="d-none d-sm-inline">{{ auth()->user()->name }}</span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end topnav-dropdown">
-                <li>
-                    <div class="dropdown-header">
-                        <div class="fw-semibold">{{ auth()->user()->name }}</div>
-                        <div class="text-muted small">{{ auth()->user()->email }}</div>
-                        <span class="badge bg-primary mt-1">{{ ucfirst(auth()->user()->role) }}</span>
-                    </div>
-                </li>
-                <li><hr class="dropdown-divider"></li>
-                @if(auth()->user()->role === 'admin')
-                    <li>
-                        <a class="dropdown-item" href="{{ route('admin.settings') }}">
-                            <i class="bi bi-gear me-2"></i>Settings
-                        </a>
-                    </li>
-                    <li><hr class="dropdown-divider"></li>
-                @endif
-                <li>
-                    <form method="POST" action="{{ route('logout') }}">
-                        @csrf
-                        <button type="submit" class="dropdown-item text-danger">
-                            <i class="bi bi-box-arrow-right me-2"></i>Logout
-                        </button>
-                    </form>
-                </li>
-            </ul>
-        </div>
     </div>
-</header>
+</div>
 
-{{-- ── NOTIFICATION STYLES ──────────────────────────────────── --}}
+@push('styles')
 <style>
+/* ── Notification Bell ───────────────────────────────────────── */
 .notification-wrapper {
     position: relative;
     display: inline-block;
@@ -105,7 +48,6 @@
     font-size: 18px;
     cursor: pointer;
     transition: all 0.2s;
-    line-height: 1;
 }
 .notif-bell-btn:hover { background: #f1f5f9; color: #2563eb; }
 .notif-bell-btn.has-unread { color: #2563eb; animation: bellRing 1s ease 1; }
@@ -134,6 +76,8 @@
     padding: 0 4px;
     border: 2px solid white;
 }
+
+/* ── Dropdown ────────────────────────────────────────────────── */
 .notif-dropdown {
     position: absolute;
     top: calc(100% + 8px);
@@ -151,6 +95,7 @@
     from { opacity:0; transform: translateY(-8px); }
     to   { opacity:1; transform: translateY(0); }
 }
+
 .notif-dropdown-header {
     display: flex;
     align-items: center;
@@ -176,7 +121,13 @@
     transition: background 0.15s;
 }
 .notif-mark-all-btn:hover { background: #eff6ff; }
-.notif-list { max-height: 380px; overflow-y: auto; }
+
+.notif-list {
+    max-height: 380px;
+    overflow-y: auto;
+}
+
+/* ── Single notification item ────────────────────────────────── */
 .notif-item {
     display: flex;
     align-items: flex-start;
@@ -186,11 +137,11 @@
     cursor: pointer;
     text-decoration: none;
     transition: background 0.15s;
-    color: inherit;
 }
 .notif-item:hover { background: #f8fafc; }
 .notif-item.unread { background: #eff6ff; }
 .notif-item.unread:hover { background: #dbeafe; }
+
 .notif-icon-wrap {
     width: 36px; height: 36px;
     border-radius: 10px;
@@ -202,6 +153,7 @@
 .notif-icon-success  { background: #dcfce7; color: #16a34a; }
 .notif-icon-warning  { background: #fef9c3; color: #ca8a04; }
 .notif-icon-danger   { background: #fee2e2; color: #dc2626; }
+
 .notif-content { flex: 1; min-width: 0; }
 .notif-title {
     font-size: 13px; font-weight: 700;
@@ -212,7 +164,10 @@
     line-height: 1.4;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.notif-time { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+.notif-time {
+    font-size: 11px; color: #94a3b8;
+    margin-top: 3px;
+}
 .notif-unread-dot {
     width: 8px; height: 8px;
     background: #2563eb;
@@ -220,6 +175,7 @@
     flex-shrink: 0;
     margin-top: 6px;
 }
+
 .notif-empty {
     text-align: center;
     padding: 40px 20px;
@@ -227,9 +183,11 @@
     font-size: 13px;
 }
 </style>
+@endpush
 
-{{-- ── NOTIFICATION SCRIPTS ─────────────────────────────────── --}}
+@push('scripts')
 <script>
+// ── Notification System ───────────────────────────────────────
 let notifOpen = false;
 
 function toggleNotifDropdown() {
@@ -237,6 +195,7 @@ function toggleNotifDropdown() {
     document.getElementById('notifDropdown').style.display = notifOpen ? 'block' : 'none';
 }
 
+// Close when clicking outside
 document.addEventListener('click', function(e) {
     const wrapper = document.getElementById('notifWrapper');
     if (wrapper && !wrapper.contains(e.target)) {
@@ -246,12 +205,13 @@ document.addEventListener('click', function(e) {
 });
 
 function renderNotifications(data) {
-    const badge   = document.getElementById('notifBadge');
-    const list    = document.getElementById('notifList');
-    const bellBtn = document.getElementById('notifBellBtn');
-    const count   = data.unread_count;
-    const notifs  = data.notifications;
+    const badge    = document.getElementById('notifBadge');
+    const list     = document.getElementById('notifList');
+    const bellBtn  = document.getElementById('notifBellBtn');
+    const count    = data.unread_count;
+    const notifs   = data.notifications;
 
+    // Update badge
     if (count > 0) {
         badge.style.display = 'flex';
         badge.textContent   = count > 99 ? '99+' : count;
@@ -261,7 +221,8 @@ function renderNotifications(data) {
         bellBtn.classList.remove('has-unread');
     }
 
-    if (!notifs || !notifs.length) {
+    // Render list
+    if (!notifs.length) {
         list.innerHTML = `
             <div class="notif-empty">
                 <i class="bi bi-bell-slash d-block mb-2 fs-4"></i>
@@ -271,14 +232,15 @@ function renderNotifications(data) {
     }
 
     list.innerHTML = notifs.map(n => `
-        <a href="#" class="notif-item ${n.unread ? 'unread' : ''}"
-           onclick="handleNotifClick(event, ${n.id}, '${n.url}')">
+        <a href="/notifications/${n.id}/read"
+           class="notif-item ${n.unread ? 'unread' : ''}"
+           onclick="return handleNotifClick(event, '${n.id}', '${n.url}')">
             <div class="notif-icon-wrap notif-icon-${n.color}">
                 <i class="bi ${n.icon}"></i>
             </div>
             <div class="notif-content">
                 <div class="notif-title">${n.title}</div>
-                <div class="notif-message" title="${n.message}">${n.message}</div>
+                <div class="notif-message">${n.message}</div>
                 <div class="notif-time"><i class="bi bi-clock me-1"></i>${n.created_at}</div>
             </div>
             ${n.unread ? '<div class="notif-unread-dot"></div>' : ''}
@@ -288,24 +250,24 @@ function renderNotifications(data) {
 
 function handleNotifClick(e, id, url) {
     e.preventDefault();
+    // Mark as read via AJAX then redirect
     fetch(`/notifications/${id}/read`, {
         method: 'PATCH',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
             'Content-Type': 'application/json'
         }
     }).then(() => {
         window.location.href = url || '/';
-    }).catch(() => {
-        window.location.href = url || '/';
     });
+    return false;
 }
 
 function markAllRead() {
     fetch('/notifications/read-all', {
         method: 'POST',
         headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
             'Content-Type': 'application/json'
         }
     }).then(() => {
@@ -319,10 +281,13 @@ function pollNotifications() {
     fetch('/notifications/poll')
         .then(r => r.json())
         .then(data => renderNotifications(data))
-        .catch(() => {});
+        .catch(() => {}); // silent fail
 }
 
-// Poll immediately + every 30 seconds
-pollNotifications();
-setInterval(pollNotifications, 30000);
+// Poll on load + every 30 seconds
+document.addEventListener('DOMContentLoaded', () => {
+    pollNotifications();
+    setInterval(pollNotifications, 30000);
+});
 </script>
+@endpush

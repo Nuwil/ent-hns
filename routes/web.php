@@ -8,6 +8,7 @@ use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\VisitController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,6 +29,10 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+    
+    Route::get('/notifications/poll',          [NotificationController::class, 'poll'])->name('notifications.poll');
+    Route::patch('/notifications/{notification}/read', [NotificationController::class, 'read'])->name('notifications.read');
+    Route::post('/notifications/read-all',     [NotificationController::class, 'readAll'])->name('notifications.readAll');
 
     /*
     |------------------------------------------------------------------
@@ -80,6 +85,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/patients/{patient}/visits',          [VisitController::class, 'storeIntake'])->name('visits.store');
         Route::put('/patients/{patient}/visits/{visit}',   [VisitController::class, 'updateIntake'])->name('visits.update');
     });
+
+    Route::get('/patients/{patient}/visits/{visit}/prescription/print',
+    [VisitController::class, 'printPrescription'])
+    ->name('visits.prescription.print');
 
     /*
     |------------------------------------------------------------------
