@@ -26,7 +26,9 @@ class SettingsController extends Controller
         $data = $request->validate([
             'full_name' => 'required|string|max:100',
             'email'     => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'password'  => 'nullable|string|min:8|confirmed',
+            'password'  => ['nullable', 'string', 'confirmed', 'regex:/(?=(?:.*[A-Z]){3})(?=(?:.*[0-9]){3})(?=(?:.*[^A-Za-z0-9]){3}).{8,}/'],
+        ], [
+            'password.regex' => 'Password must be at least 8 characters with 3 uppercase letters, 3 numbers, and 3 symbols.',
         ]);
 
         $user->full_name = $data['full_name'];
@@ -51,8 +53,10 @@ class SettingsController extends Controller
             'full_name' => 'required|string|max:150',
             'username'  => 'required|string|max:100|unique:users,username',
             'email'     => 'required|email|unique:users,email',
-            'role'      => 'required|in:admin,doctor,secretary',
-            'password'  => 'required|string|min:8|confirmed',
+            'role'      => 'required|in:doctor,secretary',
+            'password'  => ['required', 'string', 'confirmed', 'regex:/(?=(?:.*[A-Z]){3})(?=(?:.*[0-9]){3})(?=(?:.*[^A-Za-z0-9]){3}).{8,}/'],
+        ], [
+            'password.regex' => 'Password must be at least 8 characters with 3 uppercase letters, 3 numbers, and 3 symbols.',
         ]);
 
         $user = User::create([
@@ -83,7 +87,9 @@ class SettingsController extends Controller
             'full_name' => 'required|string|max:150',
             'username'  => ['required', 'string', 'max:100', Rule::unique('users', 'username')->ignore($user->id)],
             'email'     => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'password'  => 'nullable|string|min:8|confirmed',
+            'password'  => ['nullable', 'string', 'confirmed', 'regex:/(?=(?:.*[A-Z]){3})(?=(?:.*[0-9]){3})(?=(?:.*[^A-Za-z0-9]){3}).{8,}/'],
+        ], [
+            'password.regex' => 'Password must be at least 8 characters with 3 uppercase letters, 3 numbers, and 3 symbols.',
         ]);
 
         $user->full_name = $data['full_name'];
@@ -111,12 +117,10 @@ class SettingsController extends Controller
 
     public function destroyUser(User $user)
     {
-        // Cannot delete protected (main) admin
         if ($user->is_protected) {
             return back()->with('toast_error', 'The main admin account cannot be deleted.');
         }
 
-        // Cannot delete yourself
         if ($user->id === Auth::id()) {
             return back()->with('toast_error', 'You cannot delete your own account.');
         }

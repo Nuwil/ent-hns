@@ -43,16 +43,24 @@
                                 New Password
                                 <span class="text-muted fw-normal">(leave blank to keep)</span>
                             </label>
-                            <input type="password" name="password"
+                            <input type="password" name="password" id="ownPassword"
                                    class="form-control @error('password') is-invalid @enderror"
-                                   autocomplete="new-password">
+                                   autocomplete="new-password"
+                                   oninput="checkPasswordStrength(this.value, 'ownChecklist')">
                             @error('password')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            <div id="ownChecklist" class="pw-checklist mt-2" style="display:none">
+                                <div class="pw-check" id="ownChecklist-len"><i class="bi bi-x-circle-fill"></i> At least 8 characters</div>
+                                <div class="pw-check" id="ownChecklist-upper"><i class="bi bi-x-circle-fill"></i> At least 3 uppercase letters</div>
+                                <div class="pw-check" id="ownChecklist-number"><i class="bi bi-x-circle-fill"></i> At least 3 numbers</div>
+                                <div class="pw-check" id="ownChecklist-symbol"><i class="bi bi-x-circle-fill"></i> At least 3 symbols (!@#$%...)</div>
+                            </div>
                         </div>
                         <div class="mb-4">
                             <label class="form-label fw-semibold">Confirm New Password</label>
                             <input type="password" name="password_confirmation" class="form-control">
                         </div>
-                        <button type="submit" class="btn btn-primary w-100">
+                        <button type="submit" class="btn btn-primary w-100"
+                                onclick="return validatePasswordBeforeSubmit('ownPassword', 'ownChecklist')">
                             <i class="bi bi-check2 me-1"></i>Save Changes
                         </button>
                     </form>
@@ -193,7 +201,6 @@
                             <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
                             <select name="role" class="form-select" required>
                                 <option value="">Select role...</option>
-                                <option value="admin"     {{ old('role') === 'admin'     ? 'selected' : '' }}>Admin</option>
                                 <option value="doctor"    {{ old('role') === 'doctor'    ? 'selected' : '' }}>Doctor</option>
                                 <option value="secretary" {{ old('role') === 'secretary' ? 'selected' : '' }}>Secretary</option>
                             </select>
@@ -205,8 +212,15 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Password <span class="text-danger">*</span></label>
-                            <input type="password" name="password" class="form-control" required
-                                   autocomplete="new-password" minlength="8">
+                            <input type="password" name="password" id="createPassword" class="form-control" required
+                                   autocomplete="new-password"
+                                   oninput="checkPasswordStrength(this.value, 'createChecklist')">
+                            <div id="createChecklist" class="pw-checklist mt-2" style="display:none">
+                                <div class="pw-check" id="createChecklist-len"><i class="bi bi-x-circle-fill"></i> At least 8 characters</div>
+                                <div class="pw-check" id="createChecklist-upper"><i class="bi bi-x-circle-fill"></i> At least 3 uppercase letters</div>
+                                <div class="pw-check" id="createChecklist-number"><i class="bi bi-x-circle-fill"></i> At least 3 numbers</div>
+                                <div class="pw-check" id="createChecklist-symbol"><i class="bi bi-x-circle-fill"></i> At least 3 symbols (!@#$%...)</div>
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Confirm Password <span class="text-danger">*</span></label>
@@ -216,7 +230,8 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary"
+                            onclick="return validatePasswordBeforeSubmit('createPassword', 'createChecklist')">
                         <i class="bi bi-person-check me-1"></i>Create Account
                     </button>
                 </div>
@@ -263,8 +278,15 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">New Password</label>
-                            <input type="password" name="password" class="form-control"
-                                   autocomplete="new-password" minlength="8">
+                            <input type="password" name="password" id="editPassword" class="form-control"
+                                   autocomplete="new-password"
+                                   oninput="checkPasswordStrength(this.value, 'editChecklist')">
+                            <div id="editChecklist" class="pw-checklist mt-2" style="display:none">
+                                <div class="pw-check" id="editChecklist-len"><i class="bi bi-x-circle-fill"></i> At least 8 characters</div>
+                                <div class="pw-check" id="editChecklist-upper"><i class="bi bi-x-circle-fill"></i> At least 3 uppercase letters</div>
+                                <div class="pw-check" id="editChecklist-number"><i class="bi bi-x-circle-fill"></i> At least 3 numbers</div>
+                                <div class="pw-check" id="editChecklist-symbol"><i class="bi bi-x-circle-fill"></i> At least 3 symbols (!@#$%...)</div>
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Confirm Password</label>
@@ -274,7 +296,8 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary"
+                            onclick="return validatePasswordBeforeSubmit('editPassword', 'editChecklist')">
                         <i class="bi bi-check2 me-1"></i>Save Changes
                     </button>
                 </div>
@@ -326,11 +349,118 @@
     padding-bottom: 6px;
     border-bottom: 1px solid #e2e8f0;
 }
+
+/* ── Password Strength Checklist ─────────────────────────── */
+.pw-checklist {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.pw-check {
+    font-size: 12px;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    transition: color 0.2s;
+}
+.pw-check i { font-size: 13px; transition: color 0.2s; }
+.pw-check.passed { color: #16a34a; font-weight: 600; }
+.pw-check.passed i { color: #16a34a; }
+.pw-check.passed i::before { content: "\F26A"; } /* bi-check-circle-fill */
+.pw-check.failed { color: #dc2626; }
+.pw-check.failed i { color: #dc2626; }
+
+/* Strength bar */
+.pw-strength-bar {
+    height: 5px;
+    border-radius: 3px;
+    margin-top: 6px;
+    background: #e2e8f0;
+    overflow: hidden;
+}
+.pw-strength-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s, background 0.3s;
+    width: 0%;
+}
 </style>
 @endpush
 
 @push('scripts')
 <script>
+// ── Password Strength Checker ─────────────────────────────────
+function checkPasswordStrength(value, checklistId) {
+    const checklist = document.getElementById(checklistId);
+    if (!checklist) return;
+
+    // Show checklist when user starts typing
+    checklist.style.display = value.length > 0 ? 'flex' : 'none';
+
+    const rules = {
+        len:    value.length >= 8,
+        upper:  (value.match(/[A-Z]/g) || []).length >= 3,
+        number: (value.match(/[0-9]/g) || []).length >= 3,
+        symbol: (value.match(/[^A-Za-z0-9]/g) || []).length >= 3,
+    };
+
+    Object.entries(rules).forEach(([key, passed]) => {
+        const el = document.getElementById(`${checklistId}-${key}`);
+        if (!el) return;
+        el.classList.toggle('passed', passed);
+        el.classList.toggle('failed', !passed && value.length > 0);
+        const icon = el.querySelector('i');
+        if (passed) {
+            icon.className = 'bi bi-check-circle-fill';
+        } else {
+            icon.className = 'bi bi-x-circle-fill';
+        }
+    });
+
+    // Update strength bar if it exists
+    const bar = document.getElementById(`${checklistId}-bar`);
+    if (bar) {
+        const passedCount = Object.values(rules).filter(Boolean).length;
+        const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e'];
+        const widths = ['25%', '50%', '75%', '100%'];
+        bar.style.width     = passedCount > 0 ? widths[passedCount - 1] : '0%';
+        bar.style.background = passedCount > 0 ? colors[passedCount - 1] : '#e2e8f0';
+    }
+}
+
+// Block form submission if password doesn't meet requirements
+function validatePasswordBeforeSubmit(passwordInputId, checklistId) {
+    const pw = document.getElementById(passwordInputId)?.value;
+    if (!pw) return true; // blank = optional (edit forms)
+
+    const rules = {
+        len:    pw.length >= 8,
+        upper:  (pw.match(/[A-Z]/g) || []).length >= 3,
+        number: (pw.match(/[0-9]/g) || []).length >= 3,
+        symbol: (pw.match(/[^A-Za-z0-9]/g) || []).length >= 3,
+    };
+
+    const allPassed = Object.values(rules).every(Boolean);
+    if (!allPassed) {
+        // Show checklist so user can see what's missing
+        const checklist = document.getElementById(checklistId);
+        if (checklist) checklist.style.display = 'flex';
+        checkPasswordStrength(pw, checklistId);
+
+        // Shake the input
+        const input = document.getElementById(passwordInputId);
+        input?.classList.add('is-invalid');
+        setTimeout(() => input?.classList.remove('is-invalid'), 2000);
+        return false;
+    }
+    return true;
+}
+
 // Open edit modal and pre-fill fields
 function openEditModal(user) {
     document.getElementById('editFullName').value = user.full_name;

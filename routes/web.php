@@ -8,7 +8,6 @@ use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\VisitController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\SettingsController;
-use App\Http\Controllers\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -29,10 +28,6 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
-    
-    Route::get('/notifications/poll',          [NotificationController::class, 'poll'])->name('notifications.poll');
-    Route::patch('/notifications/{notification}/read', [NotificationController::class, 'read'])->name('notifications.read');
-    Route::post('/notifications/read-all',     [NotificationController::class, 'readAll'])->name('notifications.readAll');
 
     /*
     |------------------------------------------------------------------
@@ -86,10 +81,6 @@ Route::middleware('auth')->group(function () {
         Route::put('/patients/{patient}/visits/{visit}',   [VisitController::class, 'updateIntake'])->name('visits.update');
     });
 
-    Route::get('/patients/{patient}/visits/{visit}/prescription/print',
-    [VisitController::class, 'printPrescription'])
-    ->name('visits.prescription.print');
-
     /*
     |------------------------------------------------------------------
     | Doctor Routes
@@ -125,6 +116,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/patients/{patient}/visits/{visit}/edit',        [VisitController::class, 'edit'])->name('visits.edit');
         Route::put('/patients/{patient}/visits/{visit}',             [VisitController::class, 'update'])->name('visits.update');
         Route::patch('/patients/{patient}/visits/{visit}/finalize',  [VisitController::class, 'finalize'])->name('visits.finalize');
+        Route::get('/patients/{patient}/visits/{visit}/prescription/print', [VisitController::class, 'printPrescription'])->name('visits.prescription.print');
+        Route::get('/patients/{patient}/prescription/preview', [VisitController::class, 'previewPrescription'])->name('visits.prescription.preview');
 
         // Analytics
         Route::get('/analytics',              [AnalyticsController::class, 'index'])->name('analytics');
