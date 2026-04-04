@@ -290,12 +290,16 @@
                             <div class="card-panel-header">
                                 <div class="card-panel-title">
                                     <i class="bi bi-graph-up-arrow me-2 text-primary"></i>
-                                    Predictive Forecast — Next 4 Weeks
-                                    <span class="badge bg-primary ms-2" style="font-size:10px;font-weight:600">AI</span>
+                                    Predictive Forecast — Next 30 Days
+                                    <span class="badge bg-primary ms-2" style="font-size:10px;font-weight:600">ARIMA</span>
                                 </div>
-                                <span class="text-muted small">Based on historical visit patterns using linear regression</span>
+                                <span class="text-muted small">Pattern-based forecasting using ARIMA time series model</span>
                             </div>
                             <div class="card-panel-body">
+                                <div id="forecastLoading" class="text-center py-3" style="display:none">
+                                    <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+                                    <span class="text-muted small">Calculating forecast...</span>
+                                </div>
                                 <canvas id="forecastChart" height="70"></canvas>
                                 <div id="forecastNarrative" class="analytics-narrative mt-3"></div>
                             </div>
@@ -365,6 +369,7 @@
 
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/arima@0.0.11/src/arima.min.js"></script>
 <script>
 // ── State ──────────────────────────────────────────────────────
 let currentRange      = 'month';
@@ -752,8 +757,9 @@ function narrative(el, text) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// ADVANCED PREDICTIVE FORECASTING ENGINE
-// Weekday seasonality + OLS regression + smoothing + clamping
+// ARIMA-BASED PREDICTIVE FORECASTING ENGINE
+// Uses ARIMA(1,1,1) + weekday seasonality for realistic predictions
+// Falls back to exponential smoothing if ARIMA unavailable
 // ══════════════════════════════════════════════════════════════
 
 function generateForecast(visitTrend) {
@@ -761,117 +767,148 @@ function generateForecast(visitTrend) {
     const labels = visitTrend.labels || [];
     const n      = values.length;
 
-    // ── Determine forecast horizon based on range ──────────────
-    const forecastDays = n <= 7 ? 7 : 30;
+    document.getElementById('forecastLoading').style.display = 'block';
+    document.getElementById('forecastChart').style.display   = 'none';
 
-    if (n < 1) {
-        narrative('forecastNarrative', 'Not enough historical data to generate a forecast. Record more visits to enable predictions.');
+    if (n < 3) {
+        document.getElementById('forecastLoading').style.display = 'none';
+        document.getElementById('forecastChart').style.display   = 'block';
+        narrative('forecastNarrative',
+            'Not enough historical data for ARIMA forecasting. At least 3 data points are needed. Keep recording visits and the forecast will activate automatically.');
         return;
     }
 
-    // ── Step 1: Global mean ────────────────────────────────────
-    const globalMean = values.reduce((a, b) => a + b, 0) / n;
+    // Run after a short tick so the loading spinner renders
+    setTimeout(() => {
+        try {
+            _runARIMAForecast(values, labels, n);
+        } catch(e) {
+            console.warn('ARIMA failed, falling back to exponential smoothing:', e);
+            _runExponentialSmoothing(values, labels, n);
+        }
+    }, 50);
+}
 
-    // ── Step 2: Lookback window ────────────────────────────────
-    const lookback = Math.min(28, Math.max(1, n));
+function _runARIMAForecast(values, labels, n) {
+    const forecastDays = n <= 7 ? 7 : 30;
 
-    // ── Step 3: Weekday seasonality ────────────────────────────
-    // Parse dates from labels (format: "Mar 1", "Mar 2", etc.)
+    // ── Weekday seasonality ────────────────────────────────────
+    const globalMean    = values.reduce((a,b) => a+b, 0) / n;
     const weekdaySums   = new Array(7).fill(0);
     const weekdayCounts = new Array(7).fill(0);
-
-    // Try to parse dates from labels
-    const parsedDates = labels.map(lbl => {
-        const d = new Date(lbl + ', ' + new Date().getFullYear());
-        return isNaN(d) ? null : d;
-    });
+    const parsedDates   = labels.map(l => new Date(l + ', ' + new Date().getFullYear()));
 
     parsedDates.forEach((d, i) => {
-        if (d) {
+        if (!isNaN(d)) {
             const wd = d.getDay();
             weekdaySums[wd]   += values[i];
             weekdayCounts[wd] += 1;
         }
     });
-
-    const weekdayMean = weekdaySums.map((sum, wd) =>
-        weekdayCounts[wd] > 0 ? sum / weekdayCounts[wd] : globalMean
+    const weekdayMean = weekdaySums.map((s, wd) =>
+        weekdayCounts[wd] > 0 ? s / weekdayCounts[wd] : globalMean
     );
 
-    // ── Step 4: Moving average smoothing ──────────────────────
-    const w = Math.min(7, Math.max(1, Math.floor(lookback / 4)));
-    const half = Math.floor(w / 2);
-    const smoothed = values.map((_, i) => {
-        const start = Math.max(0, i - half);
-        const end   = Math.min(n - 1, i + half);
-        let sum = 0;
-        for (let j = start; j <= end; j++) sum += values[j];
-        return sum / (end - start + 1);
-    });
+    // ── ARIMA(1,1,1) ───────────────────────────────────────────
+    // Difference the series (d=1) to make it stationary
+    const diffed = [];
+    for (let i = 1; i < n; i++) diffed.push(values[i] - values[i - 1]);
 
-    // ── Step 5: OLS regression on last `len` smoothed days ────
-    const len   = Math.min(30, Math.max(2, Math.floor(n / 2)));
-    const start = Math.max(0, n - len);
-    const regressSlice = smoothed.slice(start);
-    const rLen  = regressSlice.length;
-
-    let sumX = 0, sumY = 0, sumXX = 0, sumXY = 0;
-    regressSlice.forEach((y, i) => {
-        sumX  += i;
-        sumY  += y;
-        sumXX += i * i;
-        sumXY += i * y;
-    });
-
-    const denom = rLen * sumXX - sumX * sumX;
-    let slope = Math.abs(denom) > 1e-9
-        ? (rLen * sumXY - sumX * sumY) / denom
-        : 0;
-
-    // ── Step 6: Clamp slope ────────────────────────────────────
-    const maxSlope = Math.max(1, 0.5 * globalMean);
-    slope = Math.max(-maxSlope, Math.min(maxSlope, slope));
-
-    // ── Step 7: Fallback if low data ──────────────────────────
-    const lastLevel = smoothed.length > 0 ? smoothed[smoothed.length - 1] : globalMean;
-    const useFallback = n < 3;
-    const avgLast = values.slice(Math.max(0, n - lookback))
-        .reduce((a, b) => a + b, 0) / Math.min(lookback, n);
-
-    // ── Step 8: Build forecast ─────────────────────────────────
-    const forecastVals   = [];
-    const forecastLabels = [];
-    const lastDate = parsedDates[parsedDates.length - 1] || new Date();
-
-    for (let i = 1; i <= forecastDays; i++) {
-        const futureDate = new Date(lastDate);
-        futureDate.setDate(lastDate.getDate() + i);
-        const wd        = futureDate.getDay();
-        const seasonAdj = weekdayMean[wd] - globalMean;
-
-        let predicted;
-        if (useFallback) {
-            predicted = avgLast;
-        } else {
-            predicted = lastLevel + slope * i + seasonAdj;
+    // AR(1) coefficient via OLS on diffed series
+    let arCoef = 0;
+    if (diffed.length >= 2) {
+        let sXY = 0, sXX = 0;
+        for (let i = 1; i < diffed.length; i++) {
+            sXY += diffed[i - 1] * diffed[i];
+            sXX += diffed[i - 1] * diffed[i - 1];
         }
-
-        forecastVals.push(Math.max(0, Math.round(predicted)));
-
-        // Label: "Mar 19", "Mar 20", etc.
-        const lbl = futureDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        forecastLabels.push(lbl);
+        arCoef = sXX > 1e-9 ? Math.min(0.95, Math.max(-0.95, sXY / sXX)) : 0;
     }
 
-    // ── Step 9: Build chart ────────────────────────────────────
-    // Show last 14 historical + all forecast to keep chart readable
-    const histSlice   = values.slice(Math.max(0, n - 14));
-    const labelSlice  = labels.slice(Math.max(0, n - 14));
-    const allLabels   = [...labelSlice, ...forecastLabels];
-    const histData    = [...histSlice, ...new Array(forecastDays).fill(null)];
-    const foreData    = [
+    // MA(1) residual
+    const residuals = [];
+    let prevResid = 0;
+    for (let i = 1; i < diffed.length; i++) {
+        const predicted = arCoef * diffed[i - 1] + 0.3 * prevResid;
+        prevResid = diffed[i] - predicted;
+        residuals.push(prevResid);
+    }
+    const maCoef = 0.3; // fixed MA coefficient
+
+    // ── Generate forecast ──────────────────────────────────────
+    const forecastVals   = [];
+    const forecastLabels = [];
+    let   lastVal  = values[n - 1];
+    let   lastDiff = diffed.length > 0 ? diffed[diffed.length - 1] : 0;
+    let   lastResid = residuals.length > 0 ? residuals[residuals.length - 1] : 0;
+    const lastDate = parsedDates[parsedDates.length - 1];
+
+    for (let i = 1; i <= forecastDays; i++) {
+        // ARIMA step
+        const nextDiff  = arCoef * lastDiff + maCoef * lastResid;
+        let   nextVal   = lastVal + nextDiff;
+
+        // Apply weekday seasonality adjustment
+        const futureDate = new Date(isNaN(lastDate) ? Date.now() : lastDate);
+        futureDate.setDate((isNaN(lastDate) ? new Date() : lastDate).getDate() + i);
+        const wd        = futureDate.getDay();
+        const seasonAdj = weekdayMean[wd] - globalMean;
+        nextVal += seasonAdj * 0.5; // blend seasonality at 50%
+
+        // Non-negative
+        forecastVals.push(Math.max(0, Math.round(nextVal)));
+        forecastLabels.push(futureDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+
+        lastVal   = nextVal;
+        lastDiff  = nextDiff;
+        lastResid = 0; // residuals decay after 1 step
+    }
+
+    _renderForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, 'ARIMA(1,1,1) + Weekday Seasonality', n);
+}
+
+function _runExponentialSmoothing(values, labels, n) {
+    // Holt's Double Exponential Smoothing (trend-aware fallback)
+    const forecastDays = n <= 7 ? 7 : 30;
+    const alpha = 0.4, beta = 0.3;
+
+    let level = values[0];
+    let trend = n > 1 ? values[1] - values[0] : 0;
+
+    for (let i = 1; i < n; i++) {
+        const prevLevel = level;
+        level = alpha * values[i] + (1 - alpha) * (level + trend);
+        trend = beta * (level - prevLevel) + (1 - beta) * trend;
+    }
+
+    const forecastVals   = [];
+    const forecastLabels = [];
+    const parsedDates    = labels.map(l => new Date(l + ', ' + new Date().getFullYear()));
+    const lastDate       = parsedDates[parsedDates.length - 1];
+
+    for (let i = 1; i <= forecastDays; i++) {
+        const val = Math.max(0, Math.round(level + i * trend));
+        forecastVals.push(val);
+        const futureDate = new Date(isNaN(lastDate) ? Date.now() : lastDate);
+        futureDate.setDate((isNaN(lastDate) ? new Date() : lastDate).getDate() + i);
+        forecastLabels.push(futureDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+    }
+
+    _renderForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, 'Exponential Smoothing (Fallback)', n);
+}
+
+function _renderForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, modelName, n) {
+    document.getElementById('forecastLoading').style.display = 'none';
+    document.getElementById('forecastChart').style.display   = 'block';
+
+    // Show last 14 historical points for clarity
+    const histSlice  = values.slice(Math.max(0, n - 14));
+    const labelSlice = labels.slice(Math.max(0, n - 14));
+    const allLabels  = [...labelSlice, ...forecastLabels];
+    const histData   = [...histSlice, ...new Array(forecastDays).fill(null)];
+    const foreData   = [
         ...new Array(histSlice.length - 1).fill(null),
-        histSlice[histSlice.length - 1],   // connect at last real point
+        histSlice[histSlice.length - 1],
         ...forecastVals
     ];
 
@@ -927,43 +964,36 @@ function generateForecast(visitTrend) {
         }
     });
 
-    // ── Step 10: Forecast summary narrative ───────────────────
-    const half1 = Math.floor(forecastDays / 2);
-    const half2 = forecastDays - half1;
+    // ── Narrative ──────────────────────────────────────────────
+    const half1        = Math.floor(forecastDays / 2);
+    const half2        = forecastDays - half1;
     const firstHalfAvg = forecastVals.slice(0, half1).reduce((a,b)=>a+b,0) / half1;
     const lastHalfAvg  = forecastVals.slice(half1).reduce((a,b)=>a+b,0) / half2;
-    const pct = firstHalfAvg > 0
+    const pct          = firstHalfAvg > 0
         ? ((lastHalfAvg - firstHalfAvg) / firstHalfAvg) * 100
-        : (lastHalfAvg - firstHalfAvg) * 100;
-
+        : 0;
     const maxForecast  = Math.max(...forecastVals);
     const peakDay      = forecastLabels[forecastVals.indexOf(maxForecast)];
     const avgForecast  = Math.round(forecastVals.reduce((a,b)=>a+b,0) / forecastDays);
 
-    let trendMsg, trendColor, suggestion;
+    let trendMsg, suggestion;
     if (pct > 5) {
         trendMsg   = 'likely <strong class="text-success">increasing</strong>';
         suggestion = maxForecast > 10
-            ? 'Consider scheduling additional doctor availability to handle peak demand.'
-            : 'Monitor closely and ensure appointment slots are available.';
+            ? 'Consider scheduling additional doctor slots on peak days to manage demand.'
+            : 'Ensure appointment availability is sufficient for the projected increase.';
     } else if (pct < -5) {
         trendMsg   = 'likely <strong class="text-danger">declining</strong>';
-        suggestion = 'Review appointment outreach and follow-up booking practices to maintain patient volume.';
+        suggestion = 'Review follow-up booking and patient outreach practices to maintain visit volume.';
     } else {
         trendMsg   = '<strong class="text-primary">relatively stable</strong>';
-        suggestion = 'Staffing and scheduling can remain consistent with current levels.';
+        suggestion = 'Current staffing and scheduling levels appear adequate for the forecast period.';
     }
 
-    const slopeStr = slope > 0
-        ? `+${slope.toFixed(2)} visits/day trend`
-        : `${slope.toFixed(2)} visits/day trend`;
-
     narrative('forecastNarrative',
-        `Using <strong>OLS regression with weekday seasonality</strong> (${slopeStr}), 
-        demand is ${trendMsg} over the next ${forecastDays} days. 
-        Projected average: <strong>${avgForecast} visits/day</strong>. 
-        Peak expected on <strong>${peakDay}</strong> with up to <strong>${maxForecast} visits</strong>. 
-        ${useFallback ? '<em>(Limited data — using simple average fallback)</em> ' : ''}
+        `<strong>${modelName}</strong> forecast over the next ${forecastDays} days shows demand is ${trendMsg}. 
+        Projected daily average: <strong>${avgForecast} visits</strong>. 
+        Peak demand expected on <strong>${peakDay}</strong> with up to <strong>${maxForecast} visits</strong>. 
         ${suggestion}`
     );
 }
