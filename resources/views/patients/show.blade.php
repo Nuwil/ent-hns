@@ -908,7 +908,9 @@
                                     <label class="form-label fw-semibold">
                                         Prescriptions Added <span id="dvRxCount" class="badge bg-primary ms-1">0</span>
                                     </label>
-                                    <div id="dvRxList"></div>
+                                    <div class="prescription-list-container">
+                                        <div id="dvRxList"></div>
+                                    </div>
                                     <input type="hidden" name="prescriptions" id="dvRxJson">
                                     <div class="mt-3">
                                         <label class="form-label fw-semibold"><i class="bi bi-journal-text me-1"></i>Instructions</label>
@@ -1106,7 +1108,9 @@
                                 <label class="form-label fw-semibold">
                                     Prescriptions Added <span id="cvRxCount" class="badge bg-primary ms-1">0</span>
                                 </label>
-                                <div id="cvRxList"></div>
+                                <div class="prescription-list-container">
+                                    <div id="cvRxList"></div>
+                                </div>
                                 <div class="mt-3">
                                     <label class="form-label fw-semibold"><i class="bi bi-journal-text me-1"></i>Instructions</label>
                                     <textarea id="cvPlanInstructions" class="form-control" rows="2"
@@ -1475,6 +1479,16 @@
 }
 .section-divider::before, .section-divider::after {
     content: ''; flex: 1; height: 1px; background: #e2e8f0;
+}
+
+/* Prescription list container - scrollable */
+.prescription-list-container {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px;
+    background: #fafafa;
 }
 </style>
 @endpush
@@ -1880,35 +1894,41 @@ function dvConfirmFinalize() {
         return;
     }
 
-    if (!confirm('Finalize this visit? It will be permanently locked and cannot be edited.')) return;
+    // Show custom confirm modal before finalizing
+    showConfirm({
+        title:     'Finalize Visit?',
+        message:   'This visit will be permanently locked and cannot be edited after finalizing.',
+        type:      'danger',
+        okText:    'Yes, Finalize & Lock',
+        cancelText:'Cancel',
+        onConfirm: () => {
+            // Re-enable ENT select in case it was disabled by auto-fill
+            if (entSelect) entSelect.disabled = false;
 
-    // Re-enable ENT select in case it was disabled by auto-fill
-    if (entSelect) entSelect.disabled = false;
+            // Sync chief complaint from Other input if needed
+            const ccOther = document.getElementById('dvCcOtherInput');
+            if (ccOther && ccOther.style.display !== 'none' && ccOther.value.trim()) {
+                ccInput.value = ccOther.value.trim();
+            }
 
-    // Sync chief complaint from Other input if needed
-    const ccOther = document.getElementById('dvCcOtherInput');
-    if (ccOther && ccOther.style.display !== 'none' && ccOther.value.trim()) {
-        ccInput.value = ccOther.value.trim();
-    }
+            // Sync prescriptions
+            document.getElementById('dvRxJson').value = JSON.stringify(dvPrescriptions);
 
-    // Sync prescriptions
-    document.getElementById('dvRxJson').value = JSON.stringify(dvPrescriptions);
+            // Ensure follow_up_date is in the form
+            const fuDate = document.getElementById('dvFollowUpDate');
+            let fuHidden = form.querySelector('input[name="follow_up_date"]');
+            if (!fuHidden) {
+                fuHidden = document.createElement('input');
+                fuHidden.type = 'hidden';
+                fuHidden.name = 'follow_up_date';
+                form.appendChild(fuHidden);
+            }
+            fuHidden.value = fuDate ? fuDate.value : '';
 
-    // ── Explicitly ensure follow_up_date is in the form ──────────
-    // The Plan tab may not be active, so we force-inject the value
-    const fuDate = document.getElementById('dvFollowUpDate');
-    let fuHidden = form.querySelector('input[name="follow_up_date"]');
-    if (!fuHidden) {
-        fuHidden = document.createElement('input');
-        fuHidden.type = 'hidden';
-        fuHidden.name = 'follow_up_date';
-        form.appendChild(fuHidden);
-    }
-    fuHidden.value = fuDate ? fuDate.value : '';
-
-    // Submit
-    form.onsubmit = null;
-    form.submit();
+            form.onsubmit = null;
+            form.submit();
+        }
+    });
 }
 
 // Build checklist when modal opens
@@ -1929,7 +1949,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function dvPrintPrescription() {
     if (!dvPrescriptions.length) {
-        alert('No prescriptions added yet. Please add at least one medicine first.');
+        showToast('No prescriptions added yet. Please add at least one medicine first.', 'warning');
         return;
     }
     const data         = encodeURIComponent(JSON.stringify(dvPrescriptions));
@@ -2074,10 +2094,18 @@ function cvSubmit(action) {
             setTimeout(() => d.classList.remove('is-invalid'), 3000);
             return;
         }
-        if (!confirm('Finalize this visit? It will be permanently locked and cannot be edited.')) return;
-        cvCollect('cvff');
-        const form = document.getElementById('cvFinalizeForm');
-        form.onsubmit = null; form.submit();
+        showConfirm({
+            title:     'Finalize Visit?',
+            message:   'This visit will be permanently locked and cannot be edited after finalizing.',
+            type:      'danger',
+            okText:    'Yes, Finalize & Lock',
+            cancelText:'Cancel',
+            onConfirm: () => {
+                cvCollect('cvff');
+                const form = document.getElementById('cvFinalizeForm');
+                form.onsubmit = null; form.submit();
+            }
+        });
     }
 }
 

@@ -291,9 +291,9 @@
                                 <div class="card-panel-title">
                                     <i class="bi bi-graph-up-arrow me-2 text-primary"></i>
                                     Predictive Forecast — Next 30 Days
-                                    <span class="badge bg-primary ms-2" style="font-size:10px;font-weight:600">ARIMA</span>
+                                    <span class="badge bg-primary ms-2" style="font-size:10px;font-weight:600">Advanced TS</span>
                                 </div>
-                                <span class="text-muted small">Pattern-based forecasting using ARIMA time series model</span>
+                                <span class="text-muted small">Advanced time-series forecasting with weekday seasonality and OLS trend analysis</span>
                             </div>
                             <div class="card-panel-body">
                                 <div id="forecastLoading" class="text-center py-3" style="display:none">
@@ -757,9 +757,9 @@ function narrative(el, text) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// ARIMA-BASED PREDICTIVE FORECASTING ENGINE
-// Uses ARIMA(1,1,1) + weekday seasonality for realistic predictions
-// Falls back to exponential smoothing if ARIMA unavailable
+// ══════════════════════════════════════════════════════════════
+// ADVANCED PREDICTIVE FORECASTING ENGINE
+// Based on time-series analysis with weekday seasonality and OLS trend detection
 // ══════════════════════════════════════════════════════════════
 
 function generateForecast(visitTrend) {
@@ -774,138 +774,198 @@ function generateForecast(visitTrend) {
         document.getElementById('forecastLoading').style.display = 'none';
         document.getElementById('forecastChart').style.display   = 'block';
         narrative('forecastNarrative',
-            'Not enough historical data for ARIMA forecasting. At least 3 data points are needed. Keep recording visits and the forecast will activate automatically.');
+            'Not enough historical data for forecasting. At least 3 data points are needed. Keep recording visits and the forecast will activate automatically.');
         return;
     }
 
     // Run after a short tick so the loading spinner renders
     setTimeout(() => {
         try {
-            _runARIMAForecast(values, labels, n);
+            _runAdvancedForecast(values, labels, n);
         } catch(e) {
-            console.warn('ARIMA failed, falling back to exponential smoothing:', e);
-            _runExponentialSmoothing(values, labels, n);
+            console.warn('Advanced forecast failed, falling back to simple averaging:', e);
+            _runSimpleAveraging(values, labels, n);
         }
     }, 50);
 }
 
-function _runARIMAForecast(values, labels, n) {
-    const forecastDays = n <= 7 ? 7 : 30;
+function _runAdvancedForecast(values, labels, n) {
+    // ── Step 1: Data Preparation ──────────────────────────────
+    const rangeDays = _calculateRangeDays(labels);
+    const forecastDays = _determineForecastHorizon(rangeDays, n);
 
-    // ── Weekday seasonality ────────────────────────────────────
-    const globalMean    = values.reduce((a,b) => a+b, 0) / n;
-    const weekdaySums   = new Array(7).fill(0);
+    // ── Step 2: Lookback Window Selection ─────────────────────
+    const lookback = Math.min(28, Math.max(1, n));
+
+    // ── Step 3: Global Mean Calculation ───────────────────────
+    const globalMean = values.reduce((a, b) => a + b, 0) / n;
+
+    // ── Step 4: Weekday Seasonality Model ─────────────────────
+    const { weekdayMean } = _calculateWeekdaySeasonality(values, labels, globalMean);
+
+    // ── Step 5: Data Smoothing (Moving Average) ───────────────
+    const windowSize = Math.min(7, Math.max(1, Math.floor(lookback / 4)));
+    const smoothed = _applyMovingAverage(values, windowSize);
+
+    // ── Step 6: Trend Estimation (OLS Regression) ─────────────
+    const regressionWindow = Math.min(30, Math.max(2, Math.floor(n / 2)));
+    const recentSmoothed = smoothed.slice(-regressionWindow);
+    const slope = _calculateOLSSlope(recentSmoothed);
+
+    // ── Step 7: Forecast Prediction ───────────────────────────
+    const forecast = _generateForecast(smoothed, slope, weekdayMean, globalMean, forecastDays, labels);
+
+    // ── Step 8: Render Results ────────────────────────────────
+    _renderAdvancedForecastChart(values, labels, forecast.values, forecast.labels, forecastDays, smoothed, slope, n);
+}
+
+function _calculateRangeDays(labels) {
+    if (labels.length < 2) return 1;
+    // Estimate range based on label format and count
+    // This is a simplified estimation - in production you'd parse actual dates
+    return Math.max(1, labels.length);
+}
+
+function _determineForecastHorizon(rangeDays, n) {
+    if (n <= 7) return 7;
+    if (rangeDays <= 30) return 30;
+    return 30; // Default to 30 days
+}
+
+function _calculateWeekdaySeasonality(values, labels, globalMean) {
+    const weekdaySums = new Array(7).fill(0);
     const weekdayCounts = new Array(7).fill(0);
-    const parsedDates   = labels.map(l => new Date(l + ', ' + new Date().getFullYear()));
 
-    parsedDates.forEach((d, i) => {
-        if (!isNaN(d)) {
-            const wd = d.getDay();
-            weekdaySums[wd]   += values[i];
-            weekdayCounts[wd] += 1;
+    // Parse dates more robustly
+    labels.forEach((label, i) => {
+        try {
+            // Try different date parsing strategies
+            let date;
+            if (label.includes('/')) {
+                // MM/DD format
+                const [month, day] = label.split('/').map(Number);
+                date = new Date(new Date().getFullYear(), month - 1, day);
+            } else if (label.includes('-')) {
+                // M-D or MM-DD format
+                const [month, day] = label.split('-').map(Number);
+                date = new Date(new Date().getFullYear(), month - 1, day);
+            } else {
+                // Try direct parsing
+                date = new Date(label + ', ' + new Date().getFullYear());
+            }
+
+            if (!isNaN(date)) {
+                const wd = date.getDay();
+                weekdaySums[wd] += values[i];
+                weekdayCounts[wd] += 1;
+            }
+        } catch (e) {
+            // Skip invalid dates
         }
     });
-    const weekdayMean = weekdaySums.map((s, wd) =>
-        weekdayCounts[wd] > 0 ? s / weekdayCounts[wd] : globalMean
+
+    const weekdayMean = weekdaySums.map((sum, wd) =>
+        weekdayCounts[wd] > 0 ? sum / weekdayCounts[wd] : globalMean
     );
 
-    // ── ARIMA(1,1,1) ───────────────────────────────────────────
-    // Difference the series (d=1) to make it stationary
-    const diffed = [];
-    for (let i = 1; i < n; i++) diffed.push(values[i] - values[i - 1]);
+    return { weekdayMean, weekdaySums, weekdayCounts };
+}
 
-    // AR(1) coefficient via OLS on diffed series
-    let arCoef = 0;
-    if (diffed.length >= 2) {
-        let sXY = 0, sXX = 0;
-        for (let i = 1; i < diffed.length; i++) {
-            sXY += diffed[i - 1] * diffed[i];
-            sXX += diffed[i - 1] * diffed[i - 1];
+function _applyMovingAverage(values, windowSize) {
+    const smoothed = [];
+    for (let i = 0; i < values.length; i++) {
+        const start = Math.max(0, i - Math.floor(windowSize / 2));
+        const end = Math.min(values.length - 1, i + Math.floor(windowSize / 2));
+        const window = values.slice(start, end + 1);
+        const avg = window.reduce((a, b) => a + b, 0) / window.length;
+        smoothed.push(avg);
+    }
+    return smoothed;
+}
+
+function _calculateOLSSlope(values) {
+    const n = values.length;
+    if (n < 2) return 0;
+
+    // Calculate sums
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+    for (let i = 0; i < n; i++) {
+        sumX += i;
+        sumY += values[i];
+        sumXY += i * values[i];
+        sumXX += i * i;
+    }
+
+    const denominator = n * sumXX - sumX * sumX;
+    if (Math.abs(denominator) < 1e-9) return 0;
+
+    const slope = (n * sumXY - sumX * sumY) / denominator;
+
+    // Apply slope clamping for safety
+    const maxSlopePerDay = Math.max(1, 0.5 * (sumY / n));
+    return Math.max(-maxSlopePerDay, Math.min(maxSlopePerDay, slope));
+}
+
+function _generateForecast(smoothed, slope, weekdayMean, globalMean, forecastDays, labels) {
+    const forecastValues = [];
+    const forecastLabels = [];
+
+    // Start from the last smoothed value
+    let lastValue = smoothed[smoothed.length - 1];
+
+    // Get the last date for proper weekday calculation
+    let lastDate = new Date();
+    try {
+        const lastLabel = labels[labels.length - 1];
+        if (lastLabel.includes('/')) {
+            const [month, day] = lastLabel.split('/').map(Number);
+            lastDate = new Date(new Date().getFullYear(), month - 1, day);
+        } else if (lastLabel.includes('-')) {
+            const [month, day] = lastLabel.split('-').map(Number);
+            lastDate = new Date(new Date().getFullYear(), month - 1, day);
         }
-        arCoef = sXX > 1e-9 ? Math.min(0.95, Math.max(-0.95, sXY / sXX)) : 0;
+    } catch (e) {
+        // Use current date if parsing fails
     }
-
-    // MA(1) residual
-    const residuals = [];
-    let prevResid = 0;
-    for (let i = 1; i < diffed.length; i++) {
-        const predicted = arCoef * diffed[i - 1] + 0.3 * prevResid;
-        prevResid = diffed[i] - predicted;
-        residuals.push(prevResid);
-    }
-    const maCoef = 0.3; // fixed MA coefficient
-
-    // ── Generate forecast ──────────────────────────────────────
-    const forecastVals   = [];
-    const forecastLabels = [];
-    let   lastVal  = values[n - 1];
-    let   lastDiff = diffed.length > 0 ? diffed[diffed.length - 1] : 0;
-    let   lastResid = residuals.length > 0 ? residuals[residuals.length - 1] : 0;
-    const lastDate = parsedDates[parsedDates.length - 1];
 
     for (let i = 1; i <= forecastDays; i++) {
-        // ARIMA step
-        const nextDiff  = arCoef * lastDiff + maCoef * lastResid;
-        let   nextVal   = lastVal + nextDiff;
+        // Calculate future date
+        const futureDate = new Date(lastDate);
+        futureDate.setDate(lastDate.getDate() + i);
+        const wd = futureDate.getDay();
 
-        // Apply weekday seasonality adjustment
-        const futureDate = new Date(isNaN(lastDate) ? Date.now() : lastDate);
-        futureDate.setDate((isNaN(lastDate) ? new Date() : lastDate).getDate() + i);
-        const wd        = futureDate.getDay();
+        // Seasonality adjustment
         const seasonAdj = weekdayMean[wd] - globalMean;
-        nextVal += seasonAdj * 0.5; // blend seasonality at 50%
 
-        // Non-negative
-        forecastVals.push(Math.max(0, Math.round(nextVal)));
-        forecastLabels.push(futureDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+        // Forecast with trend and seasonality
+        const predicted = lastValue + slope * i + seasonAdj;
 
-        lastVal   = nextVal;
-        lastDiff  = nextDiff;
-        lastResid = 0; // residuals decay after 1 step
+        // Ensure non-negative
+        const forecastValue = Math.max(0, Math.round(predicted));
+        forecastValues.push(forecastValue);
+
+        // Format label
+        forecastLabels.push(futureDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric'
+        }));
     }
 
-    _renderForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, 'ARIMA(1,1,1) + Weekday Seasonality', n);
+    return { values: forecastValues, labels: forecastLabels };
 }
 
-function _runExponentialSmoothing(values, labels, n) {
-    // Holt's Double Exponential Smoothing (trend-aware fallback)
-    const forecastDays = n <= 7 ? 7 : 30;
-    const alpha = 0.4, beta = 0.3;
-
-    let level = values[0];
-    let trend = n > 1 ? values[1] - values[0] : 0;
-
-    for (let i = 1; i < n; i++) {
-        const prevLevel = level;
-        level = alpha * values[i] + (1 - alpha) * (level + trend);
-        trend = beta * (level - prevLevel) + (1 - beta) * trend;
-    }
-
-    const forecastVals   = [];
-    const forecastLabels = [];
-    const parsedDates    = labels.map(l => new Date(l + ', ' + new Date().getFullYear()));
-    const lastDate       = parsedDates[parsedDates.length - 1];
-
-    for (let i = 1; i <= forecastDays; i++) {
-        const val = Math.max(0, Math.round(level + i * trend));
-        forecastVals.push(val);
-        const futureDate = new Date(isNaN(lastDate) ? Date.now() : lastDate);
-        futureDate.setDate((isNaN(lastDate) ? new Date() : lastDate).getDate() + i);
-        forecastLabels.push(futureDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-    }
-
-    _renderForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, 'Exponential Smoothing (Fallback)', n);
-}
-
-function _renderForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, modelName, n) {
+function _renderAdvancedForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, smoothed, slope, n) {
     document.getElementById('forecastLoading').style.display = 'none';
     document.getElementById('forecastChart').style.display   = 'block';
 
     // Show last 14 historical points for clarity
     const histSlice  = values.slice(Math.max(0, n - 14));
     const labelSlice = labels.slice(Math.max(0, n - 14));
+    const smoothSlice = smoothed.slice(Math.max(0, n - 14));
+
     const allLabels  = [...labelSlice, ...forecastLabels];
     const histData   = [...histSlice, ...new Array(forecastDays).fill(null)];
+    const smoothData = [...smoothSlice, ...new Array(forecastDays).fill(null)];
     const foreData   = [
         ...new Array(histSlice.length - 1).fill(null),
         histSlice[histSlice.length - 1],
@@ -926,6 +986,18 @@ function _renderForecastChart(values, labels, forecastVals, forecastLabels, fore
                     borderWidth: 2,
                     pointRadius: 3,
                     fill: true,
+                    tension: 0.35,
+                    spanGaps: false,
+                },
+                {
+                    label: 'Smoothed Trend',
+                    data: smoothData,
+                    borderColor: 'rgba(107,114,128,0.7)',
+                    backgroundColor: 'transparent',
+                    borderWidth: 1.5,
+                    borderDash: [5, 3],
+                    pointRadius: 0,
+                    fill: false,
                     tension: 0.35,
                     spanGaps: false,
                 },
@@ -964,37 +1036,151 @@ function _renderForecastChart(values, labels, forecastVals, forecastLabels, fore
         }
     });
 
-    // ── Narrative ──────────────────────────────────────────────
-    const half1        = Math.floor(forecastDays / 2);
-    const half2        = forecastDays - half1;
+    // ── Generate Narrative ────────────────────────────────────
+    _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothed);
+}
+
+function _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothed) {
+    const half1 = Math.floor(forecastVals.length / 2);
+    const half2 = forecastVals.length - half1;
     const firstHalfAvg = forecastVals.slice(0, half1).reduce((a,b)=>a+b,0) / half1;
-    const lastHalfAvg  = forecastVals.slice(half1).reduce((a,b)=>a+b,0) / half2;
-    const pct          = firstHalfAvg > 0
-        ? ((lastHalfAvg - firstHalfAvg) / firstHalfAvg) * 100
-        : 0;
-    const maxForecast  = Math.max(...forecastVals);
-    const peakDay      = forecastLabels[forecastVals.indexOf(maxForecast)];
-    const avgForecast  = Math.round(forecastVals.reduce((a,b)=>a+b,0) / forecastDays);
+    const lastHalfAvg = forecastVals.slice(half1).reduce((a,b)=>a+b,0) / half2;
+    const pct = firstHalfAvg > 0 ? ((lastHalfAvg - firstHalfAvg) / firstHalfAvg) * 100 : 0;
+    const maxForecast = Math.max(...forecastVals);
+    const peakDay = forecastLabels[forecastVals.indexOf(maxForecast)];
+    const avgForecast = Math.round(forecastVals.reduce((a,b)=>a+b,0) / forecastVals.length);
+    const lastSmoothed = smoothed[smoothed.length - 1];
 
     let trendMsg, suggestion;
     if (pct > 5) {
-        trendMsg   = 'likely <strong class="text-success">increasing</strong>';
+        trendMsg = 'likely <strong class="text-success">increasing</strong>';
         suggestion = maxForecast > 10
             ? 'Consider scheduling additional doctor slots on peak days to manage demand.'
             : 'Ensure appointment availability is sufficient for the projected increase.';
     } else if (pct < -5) {
-        trendMsg   = 'likely <strong class="text-danger">declining</strong>';
+        trendMsg = 'likely <strong class="text-danger">declining</strong>';
         suggestion = 'Review follow-up booking and patient outreach practices to maintain visit volume.';
     } else {
-        trendMsg   = '<strong class="text-primary">relatively stable</strong>';
+        trendMsg = '<strong class="text-primary">relatively stable</strong>';
         suggestion = 'Current staffing and scheduling levels appear adequate for the forecast period.';
     }
 
+    const trendDirection = slope > 0.1 ? 'upward' : slope < -0.1 ? 'downward' : 'stable';
+    const confidence = Math.abs(slope) > 0.5 ? 'high' : Math.abs(slope) > 0.2 ? 'moderate' : 'low';
+
     narrative('forecastNarrative',
-        `<strong>${modelName}</strong> forecast over the next ${forecastDays} days shows demand is ${trendMsg}. 
+        `<strong>Advanced Time-Series Forecast</strong> shows demand is ${trendMsg} (${trendDirection} trend, ${confidence} confidence). 
         Projected daily average: <strong>${avgForecast} visits</strong>. 
         Peak demand expected on <strong>${peakDay}</strong> with up to <strong>${maxForecast} visits</strong>. 
         ${suggestion}`
+    );
+}
+
+function _runSimpleAveraging(values, labels, n) {
+    // Fallback: Simple averaging with minimal seasonality
+    const forecastDays = n <= 7 ? 7 : 30;
+    const avgLast = values.slice(Math.max(0, n - 7)).reduce((a,b)=>a+b,0) / Math.min(7, n);
+
+    const forecastVals = [];
+    const forecastLabels = [];
+
+    const lastDate = new Date();
+    try {
+        const lastLabel = labels[labels.length - 1];
+        if (lastLabel.includes('/')) {
+            const [month, day] = lastLabel.split('/').map(Number);
+            lastDate.setMonth(month - 1, day);
+        } else if (lastLabel.includes('-')) {
+            const [month, day] = lastLabel.split('-').map(Number);
+            lastDate.setMonth(month - 1, day);
+        }
+    } catch (e) {}
+
+    for (let i = 1; i <= forecastDays; i++) {
+        const val = Math.max(0, Math.round(avgLast));
+        forecastVals.push(val);
+        const futureDate = new Date(lastDate);
+        futureDate.setDate(lastDate.getDate() + i);
+        forecastLabels.push(futureDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+    }
+
+    _renderSimpleForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, n);
+}
+
+function _renderSimpleForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, n) {
+    document.getElementById('forecastLoading').style.display = 'none';
+    document.getElementById('forecastChart').style.display   = 'block';
+
+    // Show last 14 historical points
+    const histSlice  = values.slice(Math.max(0, n - 14));
+    const labelSlice = labels.slice(Math.max(0, n - 14));
+    const allLabels  = [...labelSlice, ...forecastLabels];
+    const histData   = [...histSlice, ...new Array(forecastDays).fill(null)];
+    const foreData   = [
+        ...new Array(histSlice.length - 1).fill(null),
+        histSlice[histSlice.length - 1],
+        ...forecastVals
+    ];
+
+    destroyChart('forecastChart');
+    charts['forecastChart'] = new Chart(document.getElementById('forecastChart'), {
+        type: 'line',
+        data: {
+            labels: allLabels,
+            datasets: [
+                {
+                    label: 'Historical Visits',
+                    data: histData,
+                    borderColor: 'rgba(59,130,246,0.9)',
+                    backgroundColor: 'rgba(59,130,246,0.08)',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    fill: true,
+                    tension: 0.35,
+                    spanGaps: false,
+                },
+                {
+                    label: 'Forecasted Visits (Simple Average)',
+                    data: foreData,
+                    borderColor: 'rgba(234,179,8,1)',
+                    backgroundColor: 'rgba(234,179,8,0.07)',
+                    borderWidth: 2.5,
+                    borderDash: [7, 4],
+                    pointRadius: 4,
+                    pointBackgroundColor: 'rgba(234,179,8,1)',
+                    fill: false,
+                    tension: 0.35,
+                    spanGaps: false,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: true, position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ctx.raw !== null
+                            ? `${ctx.dataset.label}: ${ctx.raw} visits`
+                            : null
+                    }
+                }
+            },
+            scales: {
+                y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                x: { grid: { color: 'rgba(0,0,0,0.03)' }, ticks: { maxTicksLimit: 20 } }
+            }
+        }
+    });
+
+    const avgForecast = Math.round(forecastVals.reduce((a,b)=>a+b,0) / forecastDays);
+    const maxForecast = Math.max(...forecastVals);
+
+    narrative('forecastNarrative',
+        `<strong>Simple Averaging Forecast</strong> (fallback method) projects an average of <strong>${avgForecast} visits per day</strong> 
+        with peak demand up to <strong>${maxForecast} visits</strong>. 
+        Consider collecting more historical data for more accurate predictions.`
     );
 }
 

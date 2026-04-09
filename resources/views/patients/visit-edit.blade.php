@@ -55,6 +55,16 @@
     border-radius: 7px; padding: 7px 12px; margin-bottom: 6px; font-size: 13px;
 }
 .rx-added-info { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+
+/* Prescription list container - scrollable */
+.prescription-list-container {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px;
+    background: #fafafa;
+}
 </style>
 @endpush
 
@@ -255,7 +265,9 @@
                         <label class="form-label fw-semibold">
                             Prescriptions Added <span id="rxCount" class="badge bg-primary ms-1">0</span>
                         </label>
-                        <div id="prescriptionList" class="mb-3"></div>
+                        <div class="prescription-list-container mb-3">
+                            <div id="prescriptionList"></div>
+                        </div>
 
                         <label class="form-label fw-semibold">
                             <i class="bi bi-journal-text me-1"></i>Instructions
