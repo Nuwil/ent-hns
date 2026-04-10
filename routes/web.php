@@ -7,6 +7,7 @@ use App\Http\Controllers\PatientController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\VisitController;
 use App\Http\Controllers\AnalyticsController;
+use App\Http\Controllers\DatabaseBackupController;
 use App\Http\Controllers\SettingsController;
 
 /*
@@ -38,6 +39,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'admin'])->name('dashboard');
         Route::get('/settings',  [SettingsController::class, 'index'])->name('settings');
         Route::post('/settings', [SettingsController::class, 'update'])->name('settings.update');
+        Route::get('/settings/backup/download', [DatabaseBackupController::class, 'download'])->name('settings.backup.download');
 
         // User account management
         Route::post('/users',            [SettingsController::class, 'storeUser'])->name('users.store');
