@@ -198,25 +198,22 @@ class AnalyticsController extends Controller
 
     private function buildTrend(int $doctorId, Carbon $start, Carbon $end): array
     {
-        $days = $start->diffInDays($end);
-        $fmt  = $days <= 31 ? '%Y-%m-%d' : ($days <= 365 ? '%Y-%u' : '%Y-%m');
-        $labelFmt = $days <= 31 ? 'M j' : ($days <= 365 ? 'W\eek W' : 'M Y');
-
+        // Always aggregate by day for consistent weekday seasonality patterns
         $raw = Visit::where('doctor_id', $doctorId)
             ->whereBetween('visited_at', [$start, $end])
-            ->selectRaw("DATE_FORMAT(visited_at, '{$fmt}') as period, COUNT(*) as cnt")
+            ->selectRaw("DATE_FORMAT(visited_at, '%Y-%m-%d') as period, COUNT(*) as cnt")
             ->groupBy('period')
             ->orderBy('period')
             ->pluck('cnt', 'period');
 
-        // Fill gaps
+        // Fill gaps (daily, every day)
         $labels = []; $values = [];
         $current = $start->copy();
         while ($current->lte($end)) {
-            $key = $current->format($days <= 31 ? 'Y-m-d' : ($days <= 365 ? 'Y-W' : 'Y-m'));
-            $labels[] = $current->format($days <= 31 ? 'M j' : ($days <= 365 ? 'M j' : 'M Y'));
+            $key = $current->format('Y-m-d');
+            $labels[] = $current->format('M j');
             $values[] = $raw->get($key, 0);
-            $days <= 31 ? $current->addDay() : ($days <= 365 ? $current->addWeek() : $current->addMonth());
+            $current->addDay();
         }
 
         return ['labels' => $labels, 'values' => $values];
@@ -224,22 +221,21 @@ class AnalyticsController extends Controller
 
     private function buildClinicTrend(Carbon $start, Carbon $end): array
     {
-        $days = $start->diffInDays($end);
-        $fmt  = $days <= 31 ? '%Y-%m-%d' : ($days <= 365 ? '%Y-%u' : '%Y-%m');
-
+        // Always aggregate by day for consistent weekday seasonality patterns
         $raw = Visit::whereBetween('visited_at', [$start, $end])
-            ->selectRaw("DATE_FORMAT(visited_at, '{$fmt}') as period, COUNT(*) as cnt")
+            ->selectRaw("DATE_FORMAT(visited_at, '%Y-%m-%d') as period, COUNT(*) as cnt")
             ->groupBy('period')
             ->orderBy('period')
             ->pluck('cnt', 'period');
 
+        // Fill gaps (daily, every day)
         $labels = []; $values = [];
         $current = $start->copy();
         while ($current->lte($end)) {
-            $key = $current->format($days <= 31 ? 'Y-m-d' : ($days <= 365 ? 'Y-W' : 'Y-m'));
-            $labels[] = $current->format($days <= 31 ? 'M j' : ($days <= 365 ? 'M j' : 'M Y'));
+            $key = $current->format('Y-m-d');
+            $labels[] = $current->format('M j');
             $values[] = $raw->get($key, 0);
-            $days <= 31 ? $current->addDay() : ($days <= 365 ? $current->addWeek() : $current->addMonth());
+            $current->addDay();
         }
 
         return ['labels' => $labels, 'values' => $values];
@@ -247,11 +243,9 @@ class AnalyticsController extends Controller
 
     private function buildPatientTrend(Carbon $start, Carbon $end): array
     {
-        $days = $start->diffInDays($end);
-        $fmt  = $days <= 31 ? '%Y-%m-%d' : ($days <= 365 ? '%Y-%u' : '%Y-%m');
-
+        // Always aggregate by day for consistency
         $raw = Patient::whereBetween('created_at', [$start, $end])
-            ->selectRaw("DATE_FORMAT(created_at, '{$fmt}') as period, COUNT(*) as cnt")
+            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m-%d') as period, COUNT(*) as cnt")
             ->groupBy('period')
             ->orderBy('period')
             ->pluck('cnt', 'period');
@@ -259,10 +253,10 @@ class AnalyticsController extends Controller
         $labels = []; $values = [];
         $current = $start->copy();
         while ($current->lte($end)) {
-            $key = $current->format($days <= 31 ? 'Y-m-d' : ($days <= 365 ? 'Y-W' : 'Y-m'));
-            $labels[] = $current->format($days <= 31 ? 'M j' : ($days <= 365 ? 'M j' : 'M Y'));
+            $key = $current->format('Y-m-d');
+            $labels[] = $current->format('M j');
             $values[] = $raw->get($key, 0);
-            $days <= 31 ? $current->addDay() : ($days <= 365 ? $current->addWeek() : $current->addMonth());
+            $current->addDay();
         }
 
         return ['labels' => $labels, 'values' => $values];

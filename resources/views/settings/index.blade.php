@@ -230,6 +230,55 @@
             </div>
         </div>
 
+        <div class="col-12">
+            <div class="card-panel">
+                <div class="card-panel-header">
+                    <div class="card-panel-title">
+                        <i class="bi bi-cloud-arrow-up me-2"></i>Import Data
+                    </div>
+                    <span class="badge bg-warning" style="font-size: 11px;">
+                        <i class="bi bi-exclamation-triangle me-1"></i>Admin Only
+                    </span>
+                </div>
+                <div class="card-panel-body">
+                    <div class="row g-4 align-items-center">
+                        <div class="col-lg-8">
+                            <div class="fw-semibold mb-1" style="font-size: 15px;">
+                                Upload SQL data to restore or seed the database
+                            </div>
+                            <p class="text-muted mb-2" style="font-size: 13px; line-height: 1.6;">
+                                Import a <code>.sql</code> file containing SQL commands. This will execute the uploaded
+                                file against the current database, so use only trusted backups.
+                            </p>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="db-tag"><i class="bi bi-check2 me-1"></i>Upload .sql or .txt files</span>
+                                <span class="db-tag"><i class="bi bi-check2 me-1"></i>Max size 20 MB</span>
+                                <span class="db-tag"><i class="bi bi-check2 me-1"></i>Activity logged</span>
+                            </div>
+                        </div>
+                        <div class="col-lg-4 text-lg-end">
+                            <form method="POST" action="{{ route('admin.settings.backup.import') }}" enctype="multipart/form-data">
+                                @csrf
+                                <label class="btn btn-outline-secondary w-100 mb-2" style="position: relative; overflow: hidden;">
+                                    <i class="bi bi-upload me-2"></i>Choose SQL File
+                                    <input type="file" name="sql_file" accept=".sql,.txt" class="form-control d-none" required>
+                                </label>
+                                @error('sql_file')
+                                    <div class="text-danger small mb-2">{{ $message }}</div>
+                                @enderror
+                                <button type="submit" class="btn btn-success btn-lg w-100">
+                                    <i class="bi bi-cloud-arrow-up me-2"></i>Import Data
+                                </button>
+                                <div class="text-muted mt-2" style="font-size: 11px;">
+                                    This will execute SQL commands on your database.
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 

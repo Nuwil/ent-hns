@@ -727,6 +727,107 @@ function clearDoctors() {
     destroyChart('doctorCompareChart');
 }
 
+// ── Validation & Metrics (P0: Better accuracy tracking) ────────
+function _calculateMAP(actual, predicted) {
+    // Mean Absolute Percentage Error
+    if (actual.length === 0) return 0;
+    let sum = 0;
+    for (let i = 0; i < actual.length; i++) {
+        if (actual[i] + predicted[i] > 0) {
+            sum += Math.abs(actual[i] - predicted[i]) / Math.max(1, actual[i]);
+        }
+    }
+    return ((sum / actual.length) * 100).toFixed(1);
+}
+
+function _calculateMAE(actual, predicted) {
+    // Mean Absolute Error
+    if (actual.length === 0) return 0;
+    return (actual.reduce((s, a, i) => s + Math.abs(a - predicted[i]), 0) / actual.length).toFixed(1);
+}
+
+function _calculateRMSE(actual, predicted) {
+    // Root Mean Squared Error (penalizes larger errors more)
+    if (actual.length === 0) return 0;
+    const mse = actual.reduce((s, a, i) => s + Math.pow(a - predicted[i], 2), 0) / actual.length;
+    return Math.sqrt(mse).toFixed(1);
+}
+
+function _calculateMASE(actual, predicted, naive) {
+    // Mean Absolute Scaled Error (vs naive baseline)
+    if (actual.length === 0 || naive.length === 0) return 'N/A';
+    const mae = actual.reduce((s, a, i) => s + Math.abs(a - predicted[i]), 0) / actual.length;
+    const naiveError = naive.reduce((s, a, i) => s + Math.abs(a - predicted[i]), 0) / naive.length;
+    return (mae / Math.max(naiveError, 0.1)).toFixed(2);
+}
+
+// ── Outlier Detection (P1: Prevent spikes from breaking trends) ─
+function _detectOutliers(values) {
+    // IQR method: identify outliers
+    const sorted = [...values].sort((a, b) => a - b);
+    const q1_idx = Math.floor(sorted.length * 0.25);
+    const q3_idx = Math.floor(sorted.length * 0.75);
+    const q1 = sorted[q1_idx];
+    const q3 = sorted[q3_idx];
+    const iqr = q3 - q1;
+    const lower = q1 - 1.5 * iqr;
+    const upper = q3 + 1.5 * iqr;
+
+    return {
+        lower: lower,
+        upper: upper,
+        outlierIndices: values
+            .map((v, i) => (v < lower || v > upper) ? i : -1)
+            .filter(i => i !== -1),
+        isOutlierArray: values.map(v => v < lower || v > upper)
+    };
+}
+
+function _cleanOutliers(values) {
+    // Replace outliers with median value
+    const outliers = _detectOutliers(values);
+    if (outliers.outlierIndices.length === 0) return values;
+
+    const median = [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+    return values.map((v, i) =>
+        outliers.isOutlierArray[i] ? median : v
+    );
+}
+
+function _calculateVolatility(values) {
+    // Coefficient of Variation: stdev/mean
+    if (values.length === 0) return 0;
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    if (mean === 0) return 0;
+    const variance = values.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / values.length;
+    const stdev = Math.sqrt(variance);
+    return stdev / mean;
+}
+
+// ── Adaptive Smoothing (P1: Dynamic window based on volatility) ─
+function _applyAdaptiveMovingAverage(values, baseLookback) {
+    // Calculate volatility to determine smoothing aggressiveness
+    const volatility = _calculateVolatility(values);
+    let windowSize = Math.min(7, Math.max(1, Math.floor(baseLookback / 4)));
+
+    // Increase smoothing for high-volatility data
+    if (volatility > 0.5) {
+        windowSize = Math.min(7, windowSize + 2);  // More aggressive
+    } else if (volatility > 0.3) {
+        windowSize = Math.min(7, windowSize + 1);  // Moderate
+    }
+
+    const smoothed = [];
+    for (let i = 0; i < values.length; i++) {
+        const start = Math.max(0, i - Math.floor(windowSize / 2));
+        const end = Math.min(values.length - 1, i + Math.floor(windowSize / 2));
+        const window = values.slice(start, end + 1);
+        const avg = window.reduce((a, b) => a + b, 0) / window.length;
+        smoothed.push(avg);
+    }
+    return { smoothed, windowSize, volatility };
+}
+
 // ── Helpers ───────────────────────────────────────────────────
 function destroyChart(id) {
     if (charts[id]) { charts[id].destroy(); delete charts[id]; }
@@ -797,15 +898,21 @@ function _runAdvancedForecast(values, labels, n) {
     // ── Step 2: Lookback Window Selection ─────────────────────
     const lookback = Math.min(28, Math.max(1, n));
 
+    // ── Step 2.5 (NEW): Outlier Detection & Cleaning (P1) ─────
+    const outlierInfo = _detectOutliers(values);
+    const hasOutliers = outlierInfo.outlierIndices.length > 0;
+    const cleanedValues = hasOutliers ? _cleanOutliers(values) : values;
+
     // ── Step 3: Global Mean Calculation ───────────────────────
-    const globalMean = values.reduce((a, b) => a + b, 0) / n;
+    const globalMean = cleanedValues.reduce((a, b) => a + b, 0) / n;
 
     // ── Step 4: Weekday Seasonality Model ─────────────────────
-    const { weekdayMean } = _calculateWeekdaySeasonality(values, labels, globalMean);
+    const { weekdayMean } = _calculateWeekdaySeasonality(cleanedValues, labels, globalMean);
 
-    // ── Step 5: Data Smoothing (Moving Average) ───────────────
-    const windowSize = Math.min(7, Math.max(1, Math.floor(lookback / 4)));
-    const smoothed = _applyMovingAverage(values, windowSize);
+    // ── Step 5: Data Smoothing (Adaptive MA) ──────────────────
+    const smoothingResult = _applyAdaptiveMovingAverage(cleanedValues, lookback);
+    const smoothed = smoothingResult.smoothed;
+    const volatility = smoothingResult.volatility;
 
     // ── Step 6: Trend Estimation (OLS Regression) ─────────────
     const regressionWindow = Math.min(30, Math.max(2, Math.floor(n / 2)));
@@ -815,8 +922,40 @@ function _runAdvancedForecast(values, labels, n) {
     // ── Step 7: Forecast Prediction ───────────────────────────
     const forecast = _generateForecast(smoothed, slope, weekdayMean, globalMean, forecastDays, labels);
 
-    // ── Step 8: Render Results ────────────────────────────────
-    _renderAdvancedForecastChart(values, labels, forecast.values, forecast.labels, forecastDays, smoothed, slope, n);
+    // ── Step 8 (NEW): Validation Metrics (P0) ─────────────────
+    const metrics = _calculateValidationMetrics(values, cleanedValues, outlierInfo, volatility, n);
+
+    // ── Step 9: Render Results ────────────────────────────────
+    _renderAdvancedForecastChart(values, labels, forecast.values, forecast.labels, forecastDays, smoothed, slope, n, metrics, hasOutliers, volatility);
+}
+
+function _calculateValidationMetrics(original, cleaned, outlierInfo, volatility, n) {
+    // Calculate quality metrics for forecast validation
+    const outlierCount = outlierInfo.outlierIndices.length;
+    const outlierPct = n > 0 ? ((outlierCount / n) * 100).toFixed(1) : 0;
+
+    return {
+        outlierCount: outlierCount,
+        outlierPct: outlierPct,
+        volatility: (volatility * 100).toFixed(1),
+        dataQualityScore: _calculateDataQuality(outlierPct, volatility),
+        confidenceLevel: _determineConfidenceLevel(outlierCount, volatility, n)
+    };
+}
+
+function _calculateDataQuality(outlierPct, volatility) {
+    // Score from 0-100 (higher = better quality)
+    let score = 100;
+    score -= Math.min(30, outlierPct * 2);  // -30 max for outliers
+    score -= Math.min(30, volatility * 30);  // -30 max for volatility
+    return Math.max(20, score).toFixed(0);  // Min 20
+}
+
+function _determineConfidenceLevel(outlierCount, volatility, n) {
+    // Confidence level: Low/Moderate/High
+    if (outlierCount > n * 0.15 || volatility > 0.6) return 'Low';
+    if (outlierCount > n * 0.08 || volatility > 0.4) return 'Moderate';
+    return 'High';
 }
 
 function _calculateRangeDays(labels) {
@@ -827,9 +966,12 @@ function _calculateRangeDays(labels) {
 }
 
 function _determineForecastHorizon(rangeDays, n) {
-    if (n <= 7) return 7;
-    if (rangeDays <= 30) return 30;
-    return 30; // Default to 30 days
+    // Return forecast that's proportional to the data range shown
+    if (n <= 7) return 7;         // This Week: forecast 7 days
+    if (n <= 31) return 30;       // This Month: forecast 30 days
+    if (n <= 92) return 30;       // 3 months: forecast 30 days
+    if (n <= 365) return 60;      // This Year: forecast 60 days
+    return Math.min(90, n);       // Multi-year: forecast 90 days
 }
 
 function _calculateWeekdaySeasonality(values, labels, globalMean) {
@@ -869,18 +1011,6 @@ function _calculateWeekdaySeasonality(values, labels, globalMean) {
     );
 
     return { weekdayMean, weekdaySums, weekdayCounts };
-}
-
-function _applyMovingAverage(values, windowSize) {
-    const smoothed = [];
-    for (let i = 0; i < values.length; i++) {
-        const start = Math.max(0, i - Math.floor(windowSize / 2));
-        const end = Math.min(values.length - 1, i + Math.floor(windowSize / 2));
-        const window = values.slice(start, end + 1);
-        const avg = window.reduce((a, b) => a + b, 0) / window.length;
-        smoothed.push(avg);
-    }
-    return smoothed;
 }
 
 function _calculateOLSSlope(values) {
@@ -954,7 +1084,7 @@ function _generateForecast(smoothed, slope, weekdayMean, globalMean, forecastDay
     return { values: forecastValues, labels: forecastLabels };
 }
 
-function _renderAdvancedForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, smoothed, slope, n) {
+function _renderAdvancedForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, smoothed, slope, n, metrics, hasOutliers, volatility) {
     document.getElementById('forecastLoading').style.display = 'none';
     document.getElementById('forecastChart').style.display   = 'block';
 
@@ -1036,11 +1166,11 @@ function _renderAdvancedForecastChart(values, labels, forecastVals, forecastLabe
         }
     });
 
-    // ── Generate Narrative ────────────────────────────────────
-    _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothed);
+    // ── Generate Narrative with Validation Metrics ────────────
+    _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothed, metrics, hasOutliers);
 }
 
-function _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothed) {
+function _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothed, metrics, hasOutliers) {
     const half1 = Math.floor(forecastVals.length / 2);
     const half2 = forecastVals.length - half1;
     const firstHalfAvg = forecastVals.slice(0, half1).reduce((a,b)=>a+b,0) / half1;
@@ -1068,11 +1198,32 @@ function _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothe
     const trendDirection = slope > 0.1 ? 'upward' : slope < -0.1 ? 'downward' : 'stable';
     const confidence = Math.abs(slope) > 0.5 ? 'high' : Math.abs(slope) > 0.2 ? 'moderate' : 'low';
 
+    // ── Build narrative with validation metrics ───────────────
+    let metricsHtml = '';
+    if (metrics) {
+        const outlierWarning = metrics.outlierCount > 0
+            ? `<span style="color:#f59e0b;font-weight:600">${metrics.outlierCount} outliers (${metrics.outlierPct}%)</span>`
+            : '<span style="color:#16a34a;font-weight:600">✓ Clean data</span>';
+
+        const voltagilityColor = metrics.volatility > 40 ? '#ef4444' : metrics.volatility > 25 ? '#f59e0b' : '#16a34a';
+
+        metricsHtml = `
+            <div style="margin-top:8px;padding:8px;background:#f1f5f9;border-radius:6px;font-size:11.5px;border-left:3px solid ${voltagilityColor === '#ef4444' ? '#ef4444' : '#16a34a'}">
+                <strong style="color:#1e293b">Data Quality:</strong>
+                Data stability: <span style="color:${voltagilityColor};font-weight:600">${metrics.volatility}% volatility</span> •
+                Outliers: ${outlierWarning} •
+                Confidence: <span style="color:${metrics.confidenceLevel === 'High' ? '#16a34a' : metrics.confidenceLevel === 'Moderate' ? '#f59e0b' : '#ef4444'};font-weight:600">${metrics.confidenceLevel}</span>
+                Quality Score: <strong>${metrics.dataQualityScore}/100</strong>
+            </div>
+        `;
+    }
+
     narrative('forecastNarrative',
         `<strong>Advanced Time-Series Forecast</strong> shows demand is ${trendMsg} (${trendDirection} trend, ${confidence} confidence). 
         Projected daily average: <strong>${avgForecast} visits</strong>. 
         Peak demand expected on <strong>${peakDay}</strong> with up to <strong>${maxForecast} visits</strong>. 
-        ${suggestion}`
+        ${suggestion}
+        ${metricsHtml}`
     );
 }
 

@@ -33,6 +33,45 @@ class DatabaseBackupController extends Controller
         ]);
     }
 
+    public function import(Request $request)
+    {
+        $request->validate([
+            'sql_file' => 'required|file|mimes:sql,txt|max:20480',
+        ]);
+
+        $file = $request->file('sql_file');
+        $sql  = file_get_contents($file->getRealPath());
+
+        if ($sql === false) {
+            return back()->with('toast_error', 'Unable to read the uploaded SQL file.');
+        }
+
+        DB::beginTransaction();
+        try {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+            DB::unprepared($sql);
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            DB::commit();
+
+            ActivityLog::log(
+                action:      'database.import',
+                description: "Admin imported database SQL file: {$file->getClientOriginalName()}",
+                severity:    'warning',
+            );
+
+            return back()->with('toast_success', 'Database import completed successfully.');
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+            try {
+                DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            } catch (\Throwable $_) {
+                // Ignore secondary failure.
+            }
+
+            return back()->with('toast_error', 'Import failed: ' . $exception->getMessage());
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Private: build the SQL dump string
     // ─────────────────────────────────────────────────────────────

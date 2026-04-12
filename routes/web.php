@@ -40,6 +40,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/settings',  [SettingsController::class, 'index'])->name('settings');
         Route::post('/settings', [SettingsController::class, 'update'])->name('settings.update');
         Route::get('/settings/backup/download', [DatabaseBackupController::class, 'download'])->name('settings.backup.download');
+        Route::post('/settings/backup/import', [DatabaseBackupController::class, 'import'])->name('settings.backup.import');
 
         // User account management
         Route::post('/users',            [SettingsController::class, 'storeUser'])->name('users.store');
