@@ -155,11 +155,18 @@ class AnalyticsController extends Controller
             ->orderByDesc('cnt')
             ->pluck('cnt', 'doctor');
 
-        // Visit trend over time
+        // Visit trend over time (grouped by day/week/month for display charts)
         $visitTrend = $this->buildClinicTrend($start, $end);
 
         // New patients trend
         $patientTrend = $this->buildPatientTrend($start, $end);
+
+        // Forecast trend — ALWAYS daily, capped at last 60 days so the
+        // algorithm always gets the same granularity regardless of the
+        // selected range (week/month/year views were sending weekly/monthly
+        // buckets which broke the OLS slope and produced near-zero forecasts).
+        $forecastStart = now()->subDays(59)->startOfDay();
+        $forecastTrend = $this->buildDailyTrend($forecastStart, now()->endOfDay());
 
         return response()->json([
             'totalPatients'    => $totalPatients,
@@ -174,6 +181,7 @@ class AnalyticsController extends Controller
             'workload'         => $workload,
             'visitTrend'       => $visitTrend,
             'patientTrend'     => $patientTrend,
+            'forecastTrend'    => $forecastTrend,
             'dateRange'        => ['start' => $start->format('M j, Y'), 'end' => $end->format('M j, Y')],
         ]);
     }
@@ -198,65 +206,97 @@ class AnalyticsController extends Controller
 
     private function buildTrend(int $doctorId, Carbon $start, Carbon $end): array
     {
-        // Always aggregate by day for consistent weekday seasonality patterns
-        $raw = Visit::where('doctor_id', $doctorId)
-            ->whereBetween('visited_at', [$start, $end])
-            ->selectRaw("DATE_FORMAT(visited_at, '%Y-%m-%d') as period, COUNT(*) as cnt")
-            ->groupBy('period')
-            ->orderBy('period')
-            ->pluck('cnt', 'period');
-
-        // Fill gaps (daily, every day)
-        $labels = []; $values = [];
-        $current = $start->copy();
-        while ($current->lte($end)) {
-            $key = $current->format('Y-m-d');
-            $labels[] = $current->format('M j');
-            $values[] = $raw->get($key, 0);
-            $current->addDay();
-        }
-
-        return ['labels' => $labels, 'values' => $values];
+        return $this->buildSeriesTrend(
+            Visit::where('doctor_id', $doctorId)->whereBetween('visited_at', [$start, $end]),
+            'visited_at',
+            $start,
+            $end
+        );
     }
 
     private function buildClinicTrend(Carbon $start, Carbon $end): array
     {
-        // Always aggregate by day for consistent weekday seasonality patterns
-        $raw = Visit::whereBetween('visited_at', [$start, $end])
-            ->selectRaw("DATE_FORMAT(visited_at, '%Y-%m-%d') as period, COUNT(*) as cnt")
-            ->groupBy('period')
-            ->orderBy('period')
-            ->pluck('cnt', 'period');
+        return $this->buildSeriesTrend(
+            Visit::whereBetween('visited_at', [$start, $end]),
+            'visited_at',
+            $start,
+            $end
+        );
+    }
 
-        // Fill gaps (daily, every day)
-        $labels = []; $values = [];
-        $current = $start->copy();
+    private function buildPatientTrend(Carbon $start, Carbon $end): array
+    {
+        return $this->buildSeriesTrend(
+            Patient::whereBetween('created_at', [$start, $end]),
+            'created_at',
+            $start,
+            $end
+        );
+    }
+
+    /**
+     * Shared trend builder — groups any query by day/week/month
+     * depending on the date range and fills gaps with zeroes.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  string  $dateColumn  e.g. 'visited_at' or 'created_at'
+     */
+    /**
+     * Always returns daily visit counts for the given range.
+     * Used exclusively by the forecast algorithm so it always
+     * receives day-granularity data regardless of the selected UI range.
+     */
+    private function buildDailyTrend(Carbon $start, Carbon $end): array
+    {
+        $raw = Visit::whereBetween('visited_at', [$start, $end])
+            ->selectRaw("DATE(visited_at) as day, COUNT(*) as cnt")
+            ->groupBy('day')
+            ->orderBy('day')
+            ->pluck('cnt', 'day');
+
+        $labels  = [];
+        $values  = [];
+        $current = $start->copy()->startOfDay();
+
         while ($current->lte($end)) {
-            $key = $current->format('Y-m-d');
             $labels[] = $current->format('M j');
-            $values[] = $raw->get($key, 0);
+            $values[] = (int) $raw->get($current->format('Y-m-d'), 0);
             $current->addDay();
         }
 
         return ['labels' => $labels, 'values' => $values];
     }
 
-    private function buildPatientTrend(Carbon $start, Carbon $end): array
+    private function buildSeriesTrend($query, string $dateColumn, Carbon $start, Carbon $end): array
     {
-        // Always aggregate by day for consistency
-        $raw = Patient::whereBetween('created_at', [$start, $end])
-            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m-%d') as period, COUNT(*) as cnt")
+        $totalDays = $start->diffInDays($end);
+
+        // Choose grouping granularity
+        [$sqlFmt, $phpFmt, $labelFmt, $step] = match (true) {
+            $totalDays <= 31  => ['%Y-%m-%d', 'Y-m-d', 'M j',  'day'],
+            $totalDays <= 365 => ['%Y-%u',    'Y-W',   'M j',  'week'],
+            default           => ['%Y-%m',    'Y-m',   'M Y',  'month'],
+        };
+
+        $raw = $query
+            ->selectRaw("DATE_FORMAT({$dateColumn}, '{$sqlFmt}') as period, COUNT(*) as cnt")
             ->groupBy('period')
             ->orderBy('period')
             ->pluck('cnt', 'period');
 
-        $labels = []; $values = [];
+        $labels  = [];
+        $values  = [];
         $current = $start->copy();
+
         while ($current->lte($end)) {
-            $key = $current->format('Y-m-d');
-            $labels[] = $current->format('M j');
-            $values[] = $raw->get($key, 0);
-            $current->addDay();
+            $labels[] = $current->format($labelFmt);
+            $values[] = $raw->get($current->format($phpFmt), 0);
+
+            match ($step) {
+                'day'   => $current->addDay(),
+                'week'  => $current->addWeek(),
+                'month' => $current->addMonth(),
+            };
         }
 
         return ['labels' => $labels, 'values' => $values];

@@ -11,6 +11,12 @@ use Illuminate\Validation\Rule;
 
 class SettingsController extends Controller
 {
+    /**
+     * Password policy: 8+ chars, 3+ uppercase, 3+ digits, 3+ symbols.
+     * Single source of truth — referenced in all validation calls below.
+     */
+    private const PASSWORD_REGEX = '/(?=(?:.*[A-Z]){3})(?=(?:.*[0-9]){3})(?=(?:.*[^A-Za-z0-9]){3}).{8,}/';
+    private const PASSWORD_MSG   = 'Password must be at least 8 characters with 3 uppercase letters, 3 numbers, and 3 symbols.';
     public function index()
     {
         $users = User::orderBy('role')->orderBy('full_name')->get();
@@ -26,9 +32,9 @@ class SettingsController extends Controller
         $data = $request->validate([
             'full_name' => 'required|string|max:100',
             'email'     => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'password'  => ['nullable', 'string', 'confirmed', 'regex:/(?=(?:.*[A-Z]){3})(?=(?:.*[0-9]){3})(?=(?:.*[^A-Za-z0-9]){3}).{8,}/'],
+            'password'  => ['nullable', 'string', 'confirmed', 'regex:' . self::PASSWORD_REGEX],
         ], [
-            'password.regex' => 'Password must be at least 8 characters with 3 uppercase letters, 3 numbers, and 3 symbols.',
+            'password.regex' => self::PASSWORD_MSG,
         ]);
 
         $user->full_name = $data['full_name'];
@@ -54,9 +60,9 @@ class SettingsController extends Controller
             'username'  => 'required|string|max:100|unique:users,username',
             'email'     => 'required|email|unique:users,email',
             'role'      => 'required|in:doctor,secretary',
-            'password'  => ['required', 'string', 'confirmed', 'regex:/(?=(?:.*[A-Z]){3})(?=(?:.*[0-9]){3})(?=(?:.*[^A-Za-z0-9]){3}).{8,}/'],
+            'password'  => ['required', 'string', 'confirmed', 'regex:' . self::PASSWORD_REGEX],
         ], [
-            'password.regex' => 'Password must be at least 8 characters with 3 uppercase letters, 3 numbers, and 3 symbols.',
+            'password.regex' => self::PASSWORD_MSG,
         ]);
 
         $user = User::create([
@@ -87,9 +93,9 @@ class SettingsController extends Controller
             'full_name' => 'required|string|max:150',
             'username'  => ['required', 'string', 'max:100', Rule::unique('users', 'username')->ignore($user->id)],
             'email'     => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'password'  => ['nullable', 'string', 'confirmed', 'regex:/(?=(?:.*[A-Z]){3})(?=(?:.*[0-9]){3})(?=(?:.*[^A-Za-z0-9]){3}).{8,}/'],
+            'password'  => ['nullable', 'string', 'confirmed', 'regex:' . self::PASSWORD_REGEX],
         ], [
-            'password.regex' => 'Password must be at least 8 characters with 3 uppercase letters, 3 numbers, and 3 symbols.',
+            'password.regex' => self::PASSWORD_MSG,
         ]);
 
         $user->full_name = $data['full_name'];

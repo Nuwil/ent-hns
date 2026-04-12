@@ -290,7 +290,7 @@
                             <div class="card-panel-header">
                                 <div class="card-panel-title">
                                     <i class="bi bi-graph-up-arrow me-2 text-primary"></i>
-                                    Predictive Forecast — Next 30 Days
+                                    Predictive Forecast
                                     <span class="badge bg-primary ms-2" style="font-size:10px;font-weight:600">Advanced TS</span>
                                 </div>
                                 <span class="text-muted small">Advanced time-series forecasting with weekday seasonality and OLS trend analysis</span>
@@ -571,7 +571,7 @@ async function loadClinic() {
     generateClinicNarratives(data);
 
     // ── Generate forecast ─────────────────────────────────────
-    generateForecast(data.visitTrend);
+    generateForecast(data.forecastTrend || data.visitTrend, currentRange);
 }
 
 // ── Doctor Tab ────────────────────────────────────────────────
@@ -727,107 +727,6 @@ function clearDoctors() {
     destroyChart('doctorCompareChart');
 }
 
-// ── Validation & Metrics (P0: Better accuracy tracking) ────────
-function _calculateMAP(actual, predicted) {
-    // Mean Absolute Percentage Error
-    if (actual.length === 0) return 0;
-    let sum = 0;
-    for (let i = 0; i < actual.length; i++) {
-        if (actual[i] + predicted[i] > 0) {
-            sum += Math.abs(actual[i] - predicted[i]) / Math.max(1, actual[i]);
-        }
-    }
-    return ((sum / actual.length) * 100).toFixed(1);
-}
-
-function _calculateMAE(actual, predicted) {
-    // Mean Absolute Error
-    if (actual.length === 0) return 0;
-    return (actual.reduce((s, a, i) => s + Math.abs(a - predicted[i]), 0) / actual.length).toFixed(1);
-}
-
-function _calculateRMSE(actual, predicted) {
-    // Root Mean Squared Error (penalizes larger errors more)
-    if (actual.length === 0) return 0;
-    const mse = actual.reduce((s, a, i) => s + Math.pow(a - predicted[i], 2), 0) / actual.length;
-    return Math.sqrt(mse).toFixed(1);
-}
-
-function _calculateMASE(actual, predicted, naive) {
-    // Mean Absolute Scaled Error (vs naive baseline)
-    if (actual.length === 0 || naive.length === 0) return 'N/A';
-    const mae = actual.reduce((s, a, i) => s + Math.abs(a - predicted[i]), 0) / actual.length;
-    const naiveError = naive.reduce((s, a, i) => s + Math.abs(a - predicted[i]), 0) / naive.length;
-    return (mae / Math.max(naiveError, 0.1)).toFixed(2);
-}
-
-// ── Outlier Detection (P1: Prevent spikes from breaking trends) ─
-function _detectOutliers(values) {
-    // IQR method: identify outliers
-    const sorted = [...values].sort((a, b) => a - b);
-    const q1_idx = Math.floor(sorted.length * 0.25);
-    const q3_idx = Math.floor(sorted.length * 0.75);
-    const q1 = sorted[q1_idx];
-    const q3 = sorted[q3_idx];
-    const iqr = q3 - q1;
-    const lower = q1 - 1.5 * iqr;
-    const upper = q3 + 1.5 * iqr;
-
-    return {
-        lower: lower,
-        upper: upper,
-        outlierIndices: values
-            .map((v, i) => (v < lower || v > upper) ? i : -1)
-            .filter(i => i !== -1),
-        isOutlierArray: values.map(v => v < lower || v > upper)
-    };
-}
-
-function _cleanOutliers(values) {
-    // Replace outliers with median value
-    const outliers = _detectOutliers(values);
-    if (outliers.outlierIndices.length === 0) return values;
-
-    const median = [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
-    return values.map((v, i) =>
-        outliers.isOutlierArray[i] ? median : v
-    );
-}
-
-function _calculateVolatility(values) {
-    // Coefficient of Variation: stdev/mean
-    if (values.length === 0) return 0;
-    const mean = values.reduce((a, b) => a + b, 0) / values.length;
-    if (mean === 0) return 0;
-    const variance = values.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / values.length;
-    const stdev = Math.sqrt(variance);
-    return stdev / mean;
-}
-
-// ── Adaptive Smoothing (P1: Dynamic window based on volatility) ─
-function _applyAdaptiveMovingAverage(values, baseLookback) {
-    // Calculate volatility to determine smoothing aggressiveness
-    const volatility = _calculateVolatility(values);
-    let windowSize = Math.min(7, Math.max(1, Math.floor(baseLookback / 4)));
-
-    // Increase smoothing for high-volatility data
-    if (volatility > 0.5) {
-        windowSize = Math.min(7, windowSize + 2);  // More aggressive
-    } else if (volatility > 0.3) {
-        windowSize = Math.min(7, windowSize + 1);  // Moderate
-    }
-
-    const smoothed = [];
-    for (let i = 0; i < values.length; i++) {
-        const start = Math.max(0, i - Math.floor(windowSize / 2));
-        const end = Math.min(values.length - 1, i + Math.floor(windowSize / 2));
-        const window = values.slice(start, end + 1);
-        const avg = window.reduce((a, b) => a + b, 0) / window.length;
-        smoothed.push(avg);
-    }
-    return { smoothed, windowSize, volatility };
-}
-
 // ── Helpers ───────────────────────────────────────────────────
 function destroyChart(id) {
     if (charts[id]) { charts[id].destroy(); delete charts[id]; }
@@ -863,10 +762,17 @@ function narrative(el, text) {
 // Based on time-series analysis with weekday seasonality and OLS trend detection
 // ══════════════════════════════════════════════════════════════
 
-function generateForecast(visitTrend) {
+function generateForecast(visitTrend, range) {
     const values = visitTrend.values || [];
     const labels = visitTrend.labels || [];
     const n      = values.length;
+
+    // Determine forecast horizon based on the selected UI range:
+    //   week  →  7 days  (short-term, high detail)
+    //   month → days remaining in month + next month ≈ 30 days
+    //   year  → 90 days  (quarterly outlook — daily beyond that is noise)
+    //   custom/fallback → 30 days
+    const forecastDays = _horizonForRange(range);
 
     document.getElementById('forecastLoading').style.display = 'block';
     document.getElementById('forecastChart').style.display   = 'none';
@@ -882,37 +788,40 @@ function generateForecast(visitTrend) {
     // Run after a short tick so the loading spinner renders
     setTimeout(() => {
         try {
-            _runAdvancedForecast(values, labels, n);
+            _runAdvancedForecast(values, labels, n, forecastDays, range);
         } catch(e) {
             console.warn('Advanced forecast failed, falling back to simple averaging:', e);
-            _runSimpleAveraging(values, labels, n);
+            _runSimpleAveraging(values, labels, n, forecastDays);
         }
     }, 50);
 }
 
-function _runAdvancedForecast(values, labels, n) {
-    // ── Step 1: Data Preparation ──────────────────────────────
-    const rangeDays = _calculateRangeDays(labels);
-    const forecastDays = _determineForecastHorizon(rangeDays, n);
+function _horizonForRange(range) {
+    switch (range) {
+        case 'today': return 3;   // show next 3 days when viewing today
+        case 'week':  return 7;   // predict the next 7 days
+        case 'month': return 30;  // predict the next ~month
+        case 'year':  return 90;  // quarterly outlook
+        default:      return 30;
+    }
+}
+
+function _runAdvancedForecast(values, labels, n, forecastDays, range) {
+    // ── Step 1: forecastDays comes from _horizonForRange(range)
+    //    which is set by the active UI range button (week/month/year).
 
     // ── Step 2: Lookback Window Selection ─────────────────────
     const lookback = Math.min(28, Math.max(1, n));
 
-    // ── Step 2.5 (NEW): Outlier Detection & Cleaning (P1) ─────
-    const outlierInfo = _detectOutliers(values);
-    const hasOutliers = outlierInfo.outlierIndices.length > 0;
-    const cleanedValues = hasOutliers ? _cleanOutliers(values) : values;
-
     // ── Step 3: Global Mean Calculation ───────────────────────
-    const globalMean = cleanedValues.reduce((a, b) => a + b, 0) / n;
+    const globalMean = values.reduce((a, b) => a + b, 0) / n;
 
     // ── Step 4: Weekday Seasonality Model ─────────────────────
-    const { weekdayMean } = _calculateWeekdaySeasonality(cleanedValues, labels, globalMean);
+    const { weekdayMean } = _calculateWeekdaySeasonality(values, labels, globalMean);
 
-    // ── Step 5: Data Smoothing (Adaptive MA) ──────────────────
-    const smoothingResult = _applyAdaptiveMovingAverage(cleanedValues, lookback);
-    const smoothed = smoothingResult.smoothed;
-    const volatility = smoothingResult.volatility;
+    // ── Step 5: Data Smoothing (Moving Average) ───────────────
+    const windowSize = Math.min(7, Math.max(1, Math.floor(lookback / 4)));
+    const smoothed = _applyMovingAverage(values, windowSize);
 
     // ── Step 6: Trend Estimation (OLS Regression) ─────────────
     const regressionWindow = Math.min(30, Math.max(2, Math.floor(n / 2)));
@@ -922,56 +831,19 @@ function _runAdvancedForecast(values, labels, n) {
     // ── Step 7: Forecast Prediction ───────────────────────────
     const forecast = _generateForecast(smoothed, slope, weekdayMean, globalMean, forecastDays, labels);
 
-    // ── Step 8 (NEW): Validation Metrics (P0) ─────────────────
-    const metrics = _calculateValidationMetrics(values, cleanedValues, outlierInfo, volatility, n);
-
-    // ── Step 9: Render Results ────────────────────────────────
-    _renderAdvancedForecastChart(values, labels, forecast.values, forecast.labels, forecastDays, smoothed, slope, n, metrics, hasOutliers, volatility);
-}
-
-function _calculateValidationMetrics(original, cleaned, outlierInfo, volatility, n) {
-    // Calculate quality metrics for forecast validation
-    const outlierCount = outlierInfo.outlierIndices.length;
-    const outlierPct = n > 0 ? ((outlierCount / n) * 100).toFixed(1) : 0;
-
-    return {
-        outlierCount: outlierCount,
-        outlierPct: outlierPct,
-        volatility: (volatility * 100).toFixed(1),
-        dataQualityScore: _calculateDataQuality(outlierPct, volatility),
-        confidenceLevel: _determineConfidenceLevel(outlierCount, volatility, n)
-    };
-}
-
-function _calculateDataQuality(outlierPct, volatility) {
-    // Score from 0-100 (higher = better quality)
-    let score = 100;
-    score -= Math.min(30, outlierPct * 2);  // -30 max for outliers
-    score -= Math.min(30, volatility * 30);  // -30 max for volatility
-    return Math.max(20, score).toFixed(0);  // Min 20
-}
-
-function _determineConfidenceLevel(outlierCount, volatility, n) {
-    // Confidence level: Low/Moderate/High
-    if (outlierCount > n * 0.15 || volatility > 0.6) return 'Low';
-    if (outlierCount > n * 0.08 || volatility > 0.4) return 'Moderate';
-    return 'High';
+    // ── Step 8: Render Results ────────────────────────────────
+    _renderAdvancedForecastChart(values, labels, forecast.values, forecast.labels, forecastDays, smoothed, slope, n, range);
 }
 
 function _calculateRangeDays(labels) {
-    if (labels.length < 2) return 1;
-    // Estimate range based on label format and count
-    // This is a simplified estimation - in production you'd parse actual dates
+    // forecastTrend is always daily, so label count == day count
     return Math.max(1, labels.length);
 }
 
 function _determineForecastHorizon(rangeDays, n) {
-    // Return forecast that's proportional to the data range shown
-    if (n <= 7) return 7;         // This Week: forecast 7 days
-    if (n <= 31) return 30;       // This Month: forecast 30 days
-    if (n <= 92) return 30;       // 3 months: forecast 30 days
-    if (n <= 365) return 60;      // This Year: forecast 60 days
-    return Math.min(90, n);       // Multi-year: forecast 90 days
+    if (n <= 7) return 7;
+    if (rangeDays <= 30) return 30;
+    return 30; // Default to 30 days
 }
 
 function _calculateWeekdaySeasonality(values, labels, globalMean) {
@@ -1013,68 +885,93 @@ function _calculateWeekdaySeasonality(values, labels, globalMean) {
     return { weekdayMean, weekdaySums, weekdayCounts };
 }
 
+function _applyMovingAverage(values, windowSize) {
+    const smoothed = [];
+    for (let i = 0; i < values.length; i++) {
+        const start = Math.max(0, i - Math.floor(windowSize / 2));
+        const end = Math.min(values.length - 1, i + Math.floor(windowSize / 2));
+        const window = values.slice(start, end + 1);
+        const avg = window.reduce((a, b) => a + b, 0) / window.length;
+        smoothed.push(avg);
+    }
+    return smoothed;
+}
+
 function _calculateOLSSlope(values) {
     const n = values.length;
     if (n < 2) return 0;
 
-    // Calculate sums
+    // Trim trailing zeros — today might have 0 visits simply because
+    // the day isn't over yet, which would otherwise produce a false
+    // steep downward slope.
+    let trimmed = [...values];
+    while (trimmed.length > 2 && trimmed[trimmed.length - 1] === 0) {
+        trimmed.pop();
+    }
+    const tn = trimmed.length;
+
     let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-    for (let i = 0; i < n; i++) {
-        sumX += i;
-        sumY += values[i];
-        sumXY += i * values[i];
+    for (let i = 0; i < tn; i++) {
+        sumX  += i;
+        sumY  += trimmed[i];
+        sumXY += i * trimmed[i];
         sumXX += i * i;
     }
 
-    const denominator = n * sumXX - sumX * sumX;
+    const denominator = tn * sumXX - sumX * sumX;
     if (Math.abs(denominator) < 1e-9) return 0;
 
-    const slope = (n * sumXY - sumX * sumY) / denominator;
+    const slope = (tn * sumXY - sumX * sumY) / denominator;
 
-    // Apply slope clamping for safety
-    const maxSlopePerDay = Math.max(1, 0.5 * (sumY / n));
-    return Math.max(-maxSlopePerDay, Math.min(maxSlopePerDay, slope));
+    // Clamp slope to ±2 visits/day — prevents wild swings on sparse data
+    // while still capturing real trends on busy clinics.
+    return Math.max(-2, Math.min(2, slope));
 }
 
 function _generateForecast(smoothed, slope, weekdayMean, globalMean, forecastDays, labels) {
     const forecastValues = [];
     const forecastLabels = [];
 
-    // Start from the last smoothed value
-    let lastValue = smoothed[smoothed.length - 1];
+    // Anchor: use the mean of the last 14 non-zero days as the baseline.
+    // This prevents a single zero-day (e.g. today not finished yet) from
+    // dragging the entire forecast to zero.
+    const recent = smoothed.slice(-14).filter(v => v > 0);
+    const anchor = recent.length > 0
+        ? recent.reduce((a, b) => a + b, 0) / recent.length
+        : smoothed[smoothed.length - 1];
 
-    // Get the last date for proper weekday calculation
+    // If there's genuinely no data at all, return a flat zero forecast
+    // rather than nonsense numbers.
+    const effectiveMean = globalMean > 0 ? globalMean : 1;
+
+    // Parse the last label as today's date anchor for weekday calculation.
     let lastDate = new Date();
     try {
         const lastLabel = labels[labels.length - 1];
-        if (lastLabel.includes('/')) {
-            const [month, day] = lastLabel.split('/').map(Number);
-            lastDate = new Date(new Date().getFullYear(), month - 1, day);
-        } else if (lastLabel.includes('-')) {
-            const [month, day] = lastLabel.split('-').map(Number);
-            lastDate = new Date(new Date().getFullYear(), month - 1, day);
-        }
-    } catch (e) {
-        // Use current date if parsing fails
-    }
+        // Labels come as "Apr 12" format from PHP's 'M j'
+        const parsed = new Date(lastLabel + ' ' + new Date().getFullYear());
+        if (!isNaN(parsed)) lastDate = parsed;
+    } catch (e) { /* use today */ }
 
     for (let i = 1; i <= forecastDays; i++) {
-        // Calculate future date
         const futureDate = new Date(lastDate);
         futureDate.setDate(lastDate.getDate() + i);
         const wd = futureDate.getDay();
 
-        // Seasonality adjustment
-        const seasonAdj = weekdayMean[wd] - globalMean;
+        // Seasonality ratio (multiplicative) — safer than additive when
+        // globalMean is near zero, avoids negative forecasts.
+        const wdMean = weekdayMean[wd] > 0 ? weekdayMean[wd] : effectiveMean;
+        const seasonRatio = wdMean / effectiveMean;
 
-        // Forecast with trend and seasonality
-        const predicted = lastValue + slope * i + seasonAdj;
+        // Trend projection from anchor, dampened over time so it doesn't
+        // run away to infinity on long ranges.
+        const dampening = Math.exp(-0.02 * i); // decay trend influence
+        const trended   = anchor + slope * i * dampening;
 
-        // Ensure non-negative
+        const predicted     = Math.max(0, trended) * seasonRatio;
         const forecastValue = Math.max(0, Math.round(predicted));
         forecastValues.push(forecastValue);
 
-        // Format label
         forecastLabels.push(futureDate.toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric'
@@ -1084,14 +981,15 @@ function _generateForecast(smoothed, slope, weekdayMean, globalMean, forecastDay
     return { values: forecastValues, labels: forecastLabels };
 }
 
-function _renderAdvancedForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, smoothed, slope, n, metrics, hasOutliers, volatility) {
+function _renderAdvancedForecastChart(values, labels, forecastVals, forecastLabels, forecastDays, smoothed, slope, n, range) {
     document.getElementById('forecastLoading').style.display = 'none';
     document.getElementById('forecastChart').style.display   = 'block';
 
-    // Show last 14 historical points for clarity
-    const histSlice  = values.slice(Math.max(0, n - 14));
-    const labelSlice = labels.slice(Math.max(0, n - 14));
-    const smoothSlice = smoothed.slice(Math.max(0, n - 14));
+    // Show a range-appropriate history window so the chart isn't crowded.
+    const histWindow = { today: 7, week: 14, month: 30, year: 60 }[range] || 14;
+    const histSlice   = values.slice(Math.max(0, n - histWindow));
+    const labelSlice  = labels.slice(Math.max(0, n - histWindow));
+    const smoothSlice = smoothed.slice(Math.max(0, n - histWindow));
 
     const allLabels  = [...labelSlice, ...forecastLabels];
     const histData   = [...histSlice, ...new Array(forecastDays).fill(null)];
@@ -1132,7 +1030,7 @@ function _renderAdvancedForecastChart(values, labels, forecastVals, forecastLabe
                     spanGaps: false,
                 },
                 {
-                    label: 'Forecasted Visits',
+                    label: `Forecasted Visits (Next ${forecastDays}d)`,
                     data: foreData,
                     borderColor: 'rgba(234,179,8,1)',
                     backgroundColor: 'rgba(234,179,8,0.07)',
@@ -1166,11 +1064,11 @@ function _renderAdvancedForecastChart(values, labels, forecastVals, forecastLabe
         }
     });
 
-    // ── Generate Narrative with Validation Metrics ────────────
-    _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothed, metrics, hasOutliers);
+    // ── Generate Narrative ────────────────────────────────────
+    _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothed, range);
 }
 
-function _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothed, metrics, hasOutliers) {
+function _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothed, range) {
     const half1 = Math.floor(forecastVals.length / 2);
     const half2 = forecastVals.length - half1;
     const firstHalfAvg = forecastVals.slice(0, half1).reduce((a,b)=>a+b,0) / half1;
@@ -1180,6 +1078,8 @@ function _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothe
     const peakDay = forecastLabels[forecastVals.indexOf(maxForecast)];
     const avgForecast = Math.round(forecastVals.reduce((a,b)=>a+b,0) / forecastVals.length);
     const lastSmoothed = smoothed[smoothed.length - 1];
+
+    const horizonLabel = { today: '3 days', week: '7 days', month: '30 days', year: '90 days' };
 
     let trendMsg, suggestion;
     if (pct > 5) {
@@ -1198,38 +1098,18 @@ function _generateForecastNarrative(forecastVals, forecastLabels, slope, smoothe
     const trendDirection = slope > 0.1 ? 'upward' : slope < -0.1 ? 'downward' : 'stable';
     const confidence = Math.abs(slope) > 0.5 ? 'high' : Math.abs(slope) > 0.2 ? 'moderate' : 'low';
 
-    // ── Build narrative with validation metrics ───────────────
-    let metricsHtml = '';
-    if (metrics) {
-        const outlierWarning = metrics.outlierCount > 0
-            ? `<span style="color:#f59e0b;font-weight:600">${metrics.outlierCount} outliers (${metrics.outlierPct}%)</span>`
-            : '<span style="color:#16a34a;font-weight:600">✓ Clean data</span>';
-
-        const voltagilityColor = metrics.volatility > 40 ? '#ef4444' : metrics.volatility > 25 ? '#f59e0b' : '#16a34a';
-
-        metricsHtml = `
-            <div style="margin-top:8px;padding:8px;background:#f1f5f9;border-radius:6px;font-size:11.5px;border-left:3px solid ${voltagilityColor === '#ef4444' ? '#ef4444' : '#16a34a'}">
-                <strong style="color:#1e293b">Data Quality:</strong>
-                Data stability: <span style="color:${voltagilityColor};font-weight:600">${metrics.volatility}% volatility</span> •
-                Outliers: ${outlierWarning} •
-                Confidence: <span style="color:${metrics.confidenceLevel === 'High' ? '#16a34a' : metrics.confidenceLevel === 'Moderate' ? '#f59e0b' : '#ef4444'};font-weight:600">${metrics.confidenceLevel}</span>
-                Quality Score: <strong>${metrics.dataQualityScore}/100</strong>
-            </div>
-        `;
-    }
-
+    const rangeLabel = horizonLabel[range] || '30 days';
     narrative('forecastNarrative',
-        `<strong>Advanced Time-Series Forecast</strong> shows demand is ${trendMsg} (${trendDirection} trend, ${confidence} confidence). 
+        `<strong>Advanced Time-Series Forecast (Next ${rangeLabel})</strong> shows demand is ${trendMsg} (${trendDirection} trend, ${confidence} confidence). 
         Projected daily average: <strong>${avgForecast} visits</strong>. 
         Peak demand expected on <strong>${peakDay}</strong> with up to <strong>${maxForecast} visits</strong>. 
-        ${suggestion}
-        ${metricsHtml}`
+        ${suggestion}`
     );
 }
 
-function _runSimpleAveraging(values, labels, n) {
+function _runSimpleAveraging(values, labels, n, forecastDays) {
     // Fallback: Simple averaging with minimal seasonality
-    const forecastDays = n <= 7 ? 7 : 30;
+    forecastDays = forecastDays || (n <= 7 ? 7 : 30);
     const avgLast = values.slice(Math.max(0, n - 7)).reduce((a,b)=>a+b,0) / Math.min(7, n);
 
     const forecastVals = [];
