@@ -2005,20 +2005,50 @@ document.getElementById('addVisitModal')?.addEventListener('hidden.bs.modal', ()
 // ── Complete Visit Modal ──────────────────────────────────────
 let cvPrescriptions = [];
 let cvVisitId = null;
+let completeVisitModalInstance = null;
+
+const completeVisitModalEl = document.getElementById('completeVisitModal');
+if (completeVisitModalEl) {
+    completeVisitModalEl.addEventListener('hidden.bs.modal', () => {
+        document.querySelectorAll('#completeVisitModal .is-invalid').forEach(el => el.classList.remove('is-invalid'));
+        document.getElementById('cvDiagnosis')?.classList.remove('is-invalid');
+        document.getElementById('cvHistory')?.classList.remove('is-invalid');
+    });
+}
 
 function openCompleteVisitModal(visit) {
     cvVisitId      = visit.id;
     cvPrescriptions = Array.isArray(visit.prescriptions) ? visit.prescriptions : [];
 
-    // Set modal title & meta
-    document.getElementById('completeVisitModalTitle').innerHTML =
-        `<i class="bi bi-clipboard2-pulse me-2"></i>${visit.status === 'in_progress' ? 'Continue Visit' : 'Complete Visit'}`;
-    document.getElementById('completeVisitModalMeta').textContent =
-        `Started: ${visit.visited_at ? new Date(visit.visited_at).toLocaleDateString('en-PH', {month:'short',day:'numeric',year:'numeric'}) : ''}`;
+    const modalEl = document.getElementById('completeVisitModal');
+    if (!modalEl) {
+        console.warn('Complete Visit modal element not found. Cannot open modal.');
+        return;
+    }
 
-    // Show intake summary if secretary created it
+    const titleEl = document.getElementById('completeVisitModalTitle');
+    const metaEl = document.getElementById('completeVisitModalMeta');
     const summaryEl = document.getElementById('completeVisitIntakeSummary');
     const summaryTxt = document.getElementById('completeVisitIntakeText');
+    const entSel = document.getElementById('cvEntClass');
+    const ccDropdown = document.getElementById('cvCcDropdown');
+    const ccInput = document.getElementById('cvCcInput');
+
+    // Set modal title & meta if available
+    if (titleEl) {
+        titleEl.innerHTML =
+            `<i class="bi bi-clipboard2-pulse me-2"></i>${visit.status === 'in_progress' ? 'Continue Visit' : 'Complete Visit'}`;
+    } else {
+        console.warn('Complete Visit title element not found.');
+    }
+    if (metaEl) {
+        metaEl.textContent =
+            `Started: ${visit.visited_at ? new Date(visit.visited_at).toLocaleDateString('en-PH', {month:'short',day:'numeric',year:'numeric'}) : ''}`;
+    } else {
+        console.warn('Complete Visit meta element not found.');
+    }
+
+    // Show intake summary if secretary created it
     const hasSummary = visit.blood_pressure || visit.weight || visit.height || visit.notes;
     if (hasSummary) {
         let parts = [];
@@ -2026,16 +2056,28 @@ function openCompleteVisitModal(visit) {
         if (visit.weight)         parts.push(`<strong>Wt:</strong> ${visit.weight} kg`);
         if (visit.height)         parts.push(`<strong>Ht:</strong> ${visit.height} cm`);
         if (visit.notes)          parts.push(`<em>${visit.notes}</em>`);
-        summaryTxt.innerHTML = `<strong>Secretary Intake:</strong> ${parts.join(' · ')}`;
-        summaryEl.style.display = 'flex';
+        if (summaryTxt) {
+            summaryTxt.innerHTML = `<strong>Secretary Intake:</strong> ${parts.join(' · ')}`;
+        }
+        if (summaryEl) {
+            summaryEl.style.display = 'flex';
+        }
     } else {
-        summaryEl.style.display = 'none';
+        if (summaryEl) {
+            summaryEl.style.display = 'none';
+        }
     }
 
-    // Pre-fill Subjective
-    const entSel = document.getElementById('cvEntClass');
-    if (entSel && visit.ent_classification) entSel.value = visit.ent_classification;
-    const ccInput = document.getElementById('cvCcInput');
+    if (entSel) {
+        entSel.value = visit.ent_classification || '';
+    }
+    if (ccDropdown) {
+        if (visit.chief_complaint && Array.from(ccDropdown.options).some(opt => opt.value === visit.chief_complaint)) {
+            ccDropdown.value = visit.chief_complaint;
+        } else {
+            ccDropdown.value = '';
+        }
+    }
     if (ccInput) ccInput.value = visit.chief_complaint || '';
     const histInput = document.getElementById('cvHistory');
     if (histInput) histInput.value = visit.history || '';
@@ -2092,7 +2134,8 @@ function openCompleteVisitModal(visit) {
     cvBuildChecklist();
     cvRenderRx();
 
-    new bootstrap.Modal(document.getElementById('completeVisitModal')).show();
+    completeVisitModalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+    completeVisitModalInstance.show();
 }
 
 function cvCcChanged(value) {
