@@ -196,12 +196,26 @@ class VisitController extends Controller
     // DOCTOR — Open & continue a pending/in-progress intake visit
     // ================================================================
 
+    private function ensureDoctorAccess(Patient $patient, Visit $visit)
+    {
+        if (!$visit->doctorCanAccess(Auth::user())) {
+            return redirect()
+                ->route('doctor.patients.show', $patient)
+                ->with('toast_error', 'You are not authorized to access this visit.');
+        }
+    }
+
     public function edit(Patient $patient, Visit $visit)
     {
         if ($visit->isLocked()) {
             return redirect()
                 ->route('doctor.patients.show', $patient)
                 ->with('toast_error', 'This visit has been finalized and is locked.');
+        }
+
+        $access = $this->ensureDoctorAccess($patient, $visit);
+        if ($access) {
+            return $access;
         }
 
         // Mark as in_progress so secretary knows doctor is working on it
@@ -220,6 +234,11 @@ class VisitController extends Controller
     {
         if ($visit->isLocked()) {
             return back()->with('toast_error', 'This visit is finalized and cannot be edited.');
+        }
+
+        $access = $this->ensureDoctorAccess($patient, $visit);
+        if ($access) {
+            return $access;
         }
 
         $data = $request->validate([
@@ -288,6 +307,11 @@ class VisitController extends Controller
     {
         if ($visit->isLocked()) {
             return back()->with('toast_error', 'This visit is already finalized.');
+        }
+
+        $access = $this->ensureDoctorAccess($patient, $visit);
+        if ($access) {
+            return $access;
         }
 
         $data = $request->validate([
@@ -425,6 +449,11 @@ class VisitController extends Controller
     // ================================================================
     public function printPrescription(Patient $patient, Visit $visit)
     {
+        $access = $this->ensureDoctorAccess($patient, $visit);
+        if ($access) {
+            return $access;
+        }
+
         $prescriptions = $visit->prescriptions ?? [];
         $doctor        = $visit->doctor;
         $instructions  = $visit->plan_instructions;

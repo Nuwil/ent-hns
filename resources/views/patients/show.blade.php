@@ -380,9 +380,11 @@
                                                     <i class="bi bi-pencil me-1"></i>Edit Intake
                                                 </button>
                                             @endif
-                                            @if($role === 'doctor' && $visit->doctorCanEdit())
-                                                <button class="btn btn-xs btn-primary"
-                                                        onclick="openCompleteVisitModal({{ $visit->toJson() }})">
+                                            @if($role === 'doctor' && $visit->doctorCanEdit(auth()->user()))
+                                                <button type="button" class="btn btn-xs btn-primary"
+                                                        data-visit-id="{{ $visit->id }}"
+                                                        data-visit="{{ json_encode($visit, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) }}"
+                                                        onclick="openCompleteVisitModal(JSON.parse(this.dataset.visit))">
                                                     <i class="bi bi-clipboard2-pulse me-1"></i>
                                                     {{ $visit->isInProgress() ? 'Continue Visit' : 'Complete Visit' }}
                                                 </button>
@@ -1131,6 +1133,10 @@
 
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-outline-secondary" id="cvPrintRxBtn"
+                        onclick="cvPrintPrescription()" style="display:none">
+                    <i class="bi bi-printer me-1"></i>Print Rx
+                </button>
                 <button type="button" class="btn btn-outline-primary" onclick="cvSubmit('save')">
                     <i class="bi bi-floppy me-1"></i>Save Progress
                 </button>
@@ -1945,6 +1951,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('[data-bs-target="#dvRx"]')?.addEventListener('hide.bs.tab', () => {
         document.getElementById('dvPrintRxBtn').style.display = 'none';
     });
+
+    document.querySelector('[data-bs-target="#cvPlan"]')?.addEventListener('shown.bs.tab', () => {
+        document.getElementById('cvPrintRxBtn').style.display = 'inline-flex';
+    });
+    document.querySelector('[data-bs-target="#cvPlan"]')?.addEventListener('hide.bs.tab', () => {
+        document.getElementById('cvPrintRxBtn').style.display = 'none';
+    });
 });
 
 function dvPrintPrescription() {
@@ -1955,6 +1968,18 @@ function dvPrintPrescription() {
     const data         = encodeURIComponent(JSON.stringify(dvPrescriptions));
     const instructions = encodeURIComponent(document.querySelector('#dvVisitForm textarea[name="plan_instructions"]')?.value || '');
     const followUp     = encodeURIComponent(document.getElementById('dvFollowUpDate')?.value || '');
+    const url = `/doctor/patients/{{ $patient->id }}/prescription/preview?rxdata=${data}&instructions=${instructions}&followup=${followUp}`;
+    window.open(url, '_blank', 'width=620,height=850');
+}
+
+function cvPrintPrescription() {
+    if (!cvPrescriptions.length) {
+        showToast('No prescriptions added yet. Please add at least one medicine first.', 'warning');
+        return;
+    }
+    const data         = encodeURIComponent(JSON.stringify(cvPrescriptions));
+    const instructions = encodeURIComponent(document.getElementById('cvPlanInstructions')?.value || '');
+    const followUp     = encodeURIComponent(document.getElementById('cvFollowUp')?.value || '');
     const url = `/doctor/patients/{{ $patient->id }}/prescription/preview?rxdata=${data}&instructions=${instructions}&followup=${followUp}`;
     window.open(url, '_blank', 'width=620,height=850');
 }
@@ -2050,6 +2075,17 @@ function openCompleteVisitModal(visit) {
                 ent_classification: visit.ent_classification || '',
                 chief_complaint: visit.chief_complaint || '',
                 prescriptions: '[]' })
+        }).then(response => {
+            if (response.ok) {
+                visit.status = 'in_progress';
+                document.querySelectorAll(`[data-visit-id="${visit.id}"]`).forEach(btn => {
+                    btn.innerHTML = `<i class="bi bi-clipboard2-pulse me-1"></i>Continue Visit`;
+                });
+                document.getElementById('completeVisitModalTitle').innerHTML =
+                    `<i class="bi bi-clipboard2-pulse me-2"></i>Continue Visit`;
+            }
+        }).catch(() => {
+            console.warn('Could not mark visit as in-progress yet.');
         });
     }
 

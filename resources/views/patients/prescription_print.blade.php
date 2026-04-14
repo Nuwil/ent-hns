@@ -90,6 +90,21 @@
             overflow-wrap: break-word;
         }
 
+        .rx-instructions {
+            margin-top: 8mm;
+            padding: 4mm 4mm 5mm;
+            border-top: 1px dashed #ccc;
+            font-size: 10pt;
+            line-height: 1.5;
+            color: #111;
+        }
+
+        .rx-instructions-title {
+            font-weight: bold;
+            margin-bottom: 3mm;
+            font-size: 10.5pt;
+        }
+
         .rx-empty {
             color: #999;
             font-style: italic;
@@ -175,6 +190,19 @@
                     </div>
                 @endforelse
             </div>
+
+            @if(!empty($instructions) || !empty($followUpDate))
+                <div class="rx-instructions">
+                    @if(!empty($instructions))
+                        <div class="rx-instructions-title">Instructions</div>
+                        <div>{!! nl2br(e($instructions)) !!}</div>
+                    @endif
+                    @if(!empty($followUpDate))
+                        <div class="rx-instructions-title">Follow-up Date</div>
+                        <div>{{ $followUpDate }}</div>
+                    @endif
+                </div>
+            @endif
         </div>
     </div>
 

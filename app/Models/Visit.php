@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\User;
 
 class Visit extends Model
 {
@@ -63,10 +64,17 @@ class Visit extends Model
         return $this->status === self::STATUS_PENDING;
     }
 
-    /** Can the doctor edit/complete this visit? */
-    public function doctorCanEdit(): bool
+    /** Can the given doctor access this visit? */
+    public function doctorCanAccess(User $doctor): bool
     {
-        return in_array($this->status, [self::STATUS_PENDING, self::STATUS_IN_PROGRESS]);
+        return $doctor->id === $this->doctor_id;
+    }
+
+    /** Can this assigned doctor edit/complete this visit? */
+    public function doctorCanEdit(User $doctor): bool
+    {
+        return $this->doctorCanAccess($doctor)
+            && in_array($this->status, [self::STATUS_PENDING, self::STATUS_IN_PROGRESS]);
     }
 
     public function statusLabel(): string

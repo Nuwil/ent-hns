@@ -13,7 +13,7 @@
         <div class="sidebar-logo">
             <i class="bi bi-ear"></i>
         </div>
-        <span class="sidebar-brand-name">CarePoint</span>
+        <span class="sidebar-brand-name">ENTer</span>
         <span class="sidebar-brand-sub">ENT Clinic</span>
     </div>
 
