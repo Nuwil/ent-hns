@@ -51,10 +51,10 @@
                             <td>
                                 <div class="d-flex align-items-center gap-2">
                                     <div class="table-avatar">
-                                        {{ strtoupper(substr($patient->first_name, 0, 1)) }}
+                                        {{ strtoupper(substr($patient->last_name, 0, 1)) }}
                                     </div>
                                     <div>
-                                        <div class="fw-semibold">{{ $patient->full_name }}</div>
+                                        <div class="fw-semibold">{{ $patient->last_name }}, {{ $patient->first_name }}</div>
                                         <div class="text-muted small">{{ $patient->email }}</div>
                                     </div>
                                 </div>
