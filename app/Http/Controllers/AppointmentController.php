@@ -81,7 +81,7 @@ class AppointmentController extends Controller
         $data = $request->validate([
             'patient_id' => 'required|exists:patients,id',
             'doctor_id' => 'required|exists:users,id',
-            'scheduled_at' => 'required|date|after:today',
+            'scheduled_at' => 'required|date|after_or_equal:today',
             'reason' => 'required|string|max:500',
             'notes' => 'nullable|string|max:1000',
         ]);

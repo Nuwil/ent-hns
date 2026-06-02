@@ -18,6 +18,7 @@ class User extends Authenticatable
         'role',
         'is_active',
         'is_protected',
+        'is_head_doctor',
     ];
 
     protected $hidden = [
@@ -26,7 +27,8 @@ class User extends Authenticatable
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
+        'is_active'       => 'boolean',
+        'is_head_doctor'  => 'boolean',
     ];
 
     /**
@@ -52,6 +54,49 @@ class User extends Authenticatable
     public function isDoctor(): bool
     {
         return $this->role === 'doctor';
+    }
+
+    public function isHeadDoctor(): bool
+    {
+        return $this->role === 'doctor' && $this->is_head_doctor;
+    }
+
+    /**
+     * Head doctors can see all patient records; regular doctors only their own.
+     */
+    public function canViewAllPatients(): bool
+    {
+        return in_array($this->role, ['admin', 'secretary']) || $this->is_head_doctor;
+    }
+
+    /**
+     * Can this user access a specific patient's timeline/show page?
+     *
+     * Rules:
+     *  - Admins, secretaries, head doctors → always yes
+     *  - Regular doctors → only if they:
+     *      (a) created the patient record, OR
+     *      (b) are assigned as doctor on at least one appointment, OR
+     *      (c) have at least one visit with that patient
+     */
+    public function canAccessPatient(\App\Models\Patient $patient): bool
+    {
+        if ($this->canViewAllPatients()) {
+            return true;
+        }
+
+        if ($this->isDoctor()) {
+            // Created the record
+            if ((int) $patient->created_by === $this->id) return true;
+
+            // Assigned on an appointment
+            if ($patient->appointments()->where('doctor_id', $this->id)->exists()) return true;
+
+            // Has a visit with this patient
+            if ($patient->visits()->where('doctor_id', $this->id)->exists()) return true;
+        }
+
+        return false;
     }
 
     public function dashboardRoute(): string

@@ -17,6 +17,7 @@ class Patient extends Model
         'blood_type', 'allergies',
         'insurance_info', 'medical_history',
         'notes',
+        'created_by',
     ];
 
     protected $casts = [

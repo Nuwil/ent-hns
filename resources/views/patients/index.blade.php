@@ -16,19 +16,41 @@
     </div>
 
     <div class="card-panel">
-        {{-- Search bar --}}
+        {{-- Search + Filter + Sort toolbar --}}
         <div class="card-panel-toolbar">
-            <form method="GET" class="d-flex gap-2">
-                <div class="input-icon-wrapper" style="flex:1">
+            <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
+                {{-- Search --}}
+                <div class="input-icon-wrapper" style="flex:1; min-width:200px">
                     <i class="bi bi-search input-icon"></i>
                     <input type="text" name="search" class="form-control input-with-icon"
-                           placeholder="Search by name, phone, or email..."
+                           placeholder="Search name, phone, occupation..."
                            value="{{ $search }}">
                 </div>
-                <button type="submit" class="btn btn-primary">Search</button>
-                @if($search)
-                    <a href="{{ request()->url() }}" class="btn btn-outline-secondary">Clear</a>
-                @endif
+
+                {{-- Gender filter --}}
+                <select name="gender" class="form-select" style="width:10% !important" onchange="this.form.submit()">
+                    <option value="">All Genders</option>
+                    <option value="male"   {{ $filterGender === 'male'   ? 'selected' : '' }}>Male</option>
+                    <option value="female" {{ $filterGender === 'female' ? 'selected' : '' }}>Female</option>
+                    <option value="other"  {{ $filterGender === 'other'  ? 'selected' : '' }}>Other</option>
+                </select>
+
+                {{-- Blood type filter --}}
+                <select name="blood_type" class="form-select" style="width:10% !important" onchange="this.form.submit()">
+                    <option value="">All Blood Types</option>
+                    @foreach(['A+','A-','B+','B-','AB+','AB-','O+','O-'] as $bt)
+                        <option value="{{ $bt }}" {{ $filterBloodType === $bt ? 'selected' : '' }}>{{ $bt }}</option>
+                    @endforeach
+                </select>
+
+                {{-- Sort --}}
+                <select name="sort" class="form-select" style="width: 11.5% !important" onchange="this.form.submit()">
+                    <option value="name"       {{ $sortBy === 'name'       ? 'selected' : '' }}>Sort: Name A–Z</option>
+                    <option value="age"        {{ $sortBy === 'age'        ? 'selected' : '' }}>Sort: Youngest First</option>
+                    <option value="age_desc"   {{ $sortBy === 'age_desc'   ? 'selected' : '' }}>Sort: Oldest First</option>
+                    <option value="visits"     {{ $sortBy === 'visits'     ? 'selected' : '' }}>Sort: Most Visits</option>
+                    <option value="registered" {{ $sortBy === 'registered' ? 'selected' : '' }}>Sort: Recently Added</option>
+                </select>
             </form>
         </div>
 
@@ -80,6 +102,7 @@
                                        class="btn btn-sm btn-outline-secondary" title="Edit">
                                         <i class="bi bi-pencil"></i>
                                     </a>
+                                    @if($role !== 'secretary')
                                     <button type="button"
                                             class="btn btn-sm btn-outline-danger"
                                             title="Delete"
@@ -90,6 +113,7 @@
                                           action="{{ route("{$role}.patients.destroy", $patient) }}">
                                         @csrf @method('DELETE')
                                     </form>
+                                    @endif
                                 </div>
                             </td>
                         </tr>

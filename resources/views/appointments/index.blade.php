@@ -251,7 +251,7 @@
                         <label class="form-label fw-semibold">New Date <span class="text-danger">*</span></label>
                         <input type="date" name="scheduled_at" id="rescheduleDateTime"
                                class="form-control" required
-                               min="{{ now()->addDay()->format('Y-m-d') }}">
+                               min="{{ now()->format('Y-m-d') }}">
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Notes</label>
@@ -366,7 +366,7 @@
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Date & Time <span class="text-danger">*</span></label>
                         <input type="date" name="scheduled_at" class="form-control" required
-                               min="{{ now()->addDay()->format('Y-m-d') }}">
+                               min="{{ now()->format('Y-m-d') }}">
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Reason <span class="text-danger">*</span></label>

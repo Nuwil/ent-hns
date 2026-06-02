@@ -284,6 +284,40 @@
                         </div>
                     </div>
 
+                    {{-- Demographics --}}
+                    <div class="col-lg-6">
+                        <div class="card-panel">
+                            <div class="card-panel-header">
+                                <div class="card-panel-title"><i class="bi bi-people me-2"></i>Patient Demographics</div>
+                            </div>
+                            <div class="card-panel-body">
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <div class="text-muted small fw-semibold mb-2">Gender</div>
+                                        <canvas id="genderChart" height="180"></canvas>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small fw-semibold mb-2">Age Groups</div>
+                                        <canvas id="ageGroupChart" height="180"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Peak Hours --}}
+                    <div class="col-lg-6">
+                        <div class="card-panel">
+                            <div class="card-panel-header">
+                                <div class="card-panel-title"><i class="bi bi-clock me-2"></i>Peak Hours</div>
+                                <span class="text-muted small">Visits by hour of day (PHT)</span>
+                            </div>
+                            <div class="card-panel-body chart-wrap">
+                                <canvas id="peakHoursChart" height="160"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
                     {{-- Predictive Forecast --}}
                     <div class="col-12">
                         <div class="card-panel">
@@ -386,28 +420,6 @@ const doctorDataUrl = '{{ $doctorDataUrl }}';
 // Chart instances (destroyed and recreated on each load)
 const charts = {};
 
-// ── On load ───────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-    // Set default custom date range inputs
-    const today    = new Date().toISOString().split('T')[0];
-    const monthAgo = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
-    document.getElementById('customStart').value = monthAgo;
-    document.getElementById('customEnd').value   = today;
-
-    // Load both tabs so whichever is active shows data immediately
-    loadClinic();
-    loadDoctor();
-
-    // Wire tab clicks to reload data when switching
-    document.querySelectorAll('#analyticsTabs .nav-link').forEach(btn => {
-        btn.addEventListener('shown.bs.tab', () => {
-            const target = btn.getAttribute('data-bs-target');
-            if (target === '#tabClinic') loadClinic();
-            else loadDoctor();
-        });
-    });
-});
-
 // ── Filter ────────────────────────────────────────────────────
 function setRange(range) {
     currentRange = range;
@@ -442,6 +454,28 @@ function buildParams(extra = {}) {
     }
     return p.toString();
 }
+
+// ── On load ───────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    // Set default custom date range inputs
+    const today    = new Date().toISOString().split('T')[0];
+    const monthAgo = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
+    document.getElementById('customStart').value = monthAgo;
+    document.getElementById('customEnd').value   = today;
+
+    // Load both tabs so whichever is active shows data immediately
+    loadClinic();
+    loadDoctor();
+
+    // Wire tab clicks to reload data when switching
+    document.querySelectorAll('#analyticsTabs .nav-link').forEach(btn => {
+        btn.addEventListener('shown.bs.tab', () => {
+            const target = btn.getAttribute('data-bs-target');
+            if (target === '#tabClinic') loadClinic();
+            else loadDoctor();
+        });
+    });
+});
 
 // ── Clinic Tab ────────────────────────────────────────────────
 async function loadClinic() {
@@ -534,6 +568,57 @@ async function loadClinic() {
         },
         options: { responsive: true, plugins: { legend: { display: false } },
             scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    // Demographics — Gender doughnut
+    destroyChart('genderChart');
+    charts['genderChart'] = new Chart(document.getElementById('genderChart'), {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(data.demographics.gender).map(g => g.charAt(0).toUpperCase() + g.slice(1)),
+            datasets: [{ data: Object.values(data.demographics.gender),
+                backgroundColor: ['rgba(59,130,246,0.8)','rgba(236,72,153,0.8)','rgba(139,92,246,0.8)'],
+                borderWidth: 2 }]
+        },
+        options: { responsive: true, cutout: '55%', plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
+    });
+
+    // Demographics — Age Groups bar
+    destroyChart('ageGroupChart');
+    charts['ageGroupChart'] = new Chart(document.getElementById('ageGroupChart'), {
+        type: 'bar',
+        data: {
+            labels: Object.keys(data.demographics.ageGroups),
+            datasets: [{ data: Object.values(data.demographics.ageGroups),
+                backgroundColor: ['rgba(16,185,129,0.8)','rgba(59,130,246,0.8)','rgba(139,92,246,0.8)','rgba(245,158,11,0.8)','rgba(239,68,68,0.8)','rgba(75,85,99,0.8)'],
+                borderRadius: 4 }]
+        },
+        options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    // Peak Hours bar
+    destroyChart('peakHoursChart');
+    charts['peakHoursChart'] = new Chart(document.getElementById('peakHoursChart'), {
+        type: 'bar',
+        data: {
+            labels: Object.keys(data.peakHours),
+            datasets: [{
+                label: 'Visits',
+                data: Object.values(data.peakHours),
+                backgroundColor: Object.values(data.peakHours).map((v, i, arr) =>
+                    v === Math.max(...arr) ? 'rgba(239,68,68,0.85)' : 'rgba(59,130,246,0.7)'
+                ),
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false },
+                tooltip: { callbacks: { label: ctx => ` ${ctx.raw} visits` } }
+            },
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
     });
 
     // Chief Complaints

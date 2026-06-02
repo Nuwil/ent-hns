@@ -66,13 +66,15 @@ class SettingsController extends Controller
         ]);
 
         $user = User::create([
-            'full_name'     => $data['full_name'],
-            'username'      => $data['username'],
-            'email'         => $data['email'],
-            'role'          => $data['role'],
-            'password_hash' => Hash::make($data['password']),
-            'is_active'     => true,
-            'is_protected'  => false,
+            'full_name'      => $data['full_name'],
+            'username'       => $data['username'],
+            'email'          => $data['email'],
+            'role'           => $data['role'],
+            'password_hash'  => Hash::make($data['password']),
+            'is_active'      => true,
+            'is_protected'   => false,
+            // Only doctors can be head doctor
+            'is_head_doctor' => $data['role'] === 'doctor' && $request->boolean('is_head_doctor'),
         ]);
 
         ActivityLog::log(
@@ -98,9 +100,13 @@ class SettingsController extends Controller
             'password.regex' => self::PASSWORD_MSG,
         ]);
 
-        $user->full_name = $data['full_name'];
-        $user->username  = $data['username'];
-        $user->email     = $data['email'];
+        $user->full_name      = $data['full_name'];
+        $user->username       = $data['username'];
+        $user->email          = $data['email'];
+        // Only doctors can be designated as head doctor
+        if ($user->role === 'doctor') {
+            $user->is_head_doctor = $request->boolean('is_head_doctor');
+        }
         // Role is intentionally NOT updatable after account creation
 
         if (!empty($data['password'])) {

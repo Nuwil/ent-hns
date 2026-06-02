@@ -168,6 +168,46 @@ class AnalyticsController extends Controller
         $forecastStart = now()->subDays(59)->startOfDay();
         $forecastTrend = $this->buildDailyTrend($forecastStart, now()->endOfDay());
 
+        // ── Demographics ──────────────────────────────────────────
+        // Gender breakdown of patients who had visits in this period
+        $genderBreakdown = Visit::whereBetween('visited_at', [$start, $end])
+            ->join('patients', 'visits.patient_id', '=', 'patients.id')
+            ->selectRaw('patients.gender, COUNT(DISTINCT patients.id) as cnt')
+            ->groupBy('patients.gender')
+            ->pluck('cnt', 'patients.gender');
+
+        // Age group breakdown
+        $ageGroups = Visit::whereBetween('visited_at', [$start, $end])
+            ->join('patients', 'visits.patient_id', '=', 'patients.id')
+            ->selectRaw("
+                CASE
+                    WHEN TIMESTAMPDIFF(YEAR, patients.date_of_birth, CURDATE()) < 13 THEN '0–12 (Child)'
+                    WHEN TIMESTAMPDIFF(YEAR, patients.date_of_birth, CURDATE()) < 18 THEN '13–17 (Teen)'
+                    WHEN TIMESTAMPDIFF(YEAR, patients.date_of_birth, CURDATE()) < 35 THEN '18–34 (Young Adult)'
+                    WHEN TIMESTAMPDIFF(YEAR, patients.date_of_birth, CURDATE()) < 55 THEN '35–54 (Adult)'
+                    WHEN TIMESTAMPDIFF(YEAR, patients.date_of_birth, CURDATE()) < 70 THEN '55–69 (Senior)'
+                    ELSE '70+ (Elderly)'
+                END as age_group,
+                COUNT(DISTINCT patients.id) as cnt
+            ")
+            ->groupBy('age_group')
+            ->orderByRaw("MIN(patients.date_of_birth) desc")
+            ->pluck('cnt', 'age_group');
+
+        // ── Peak Hours ─────────────────────────────────────────────
+        // Count visits per hour of day (PHT, UTC+8)
+        $peakHours = Visit::whereBetween('visited_at', [$start, $end])
+            ->selectRaw("HOUR(CONVERT_TZ(visited_at, '+00:00', '+08:00')) as hour, COUNT(*) as cnt")
+            ->groupBy('hour')
+            ->orderBy('hour')
+            ->pluck('cnt', 'hour');
+
+        // Build full 8am–6pm array (clinic hours), fill missing hours with 0
+        $peakHoursFormatted = collect(range(7, 18))->mapWithKeys(function ($h) use ($peakHours) {
+            $label = Carbon::createFromTime($h)->format('g A');
+            return [$label => (int) $peakHours->get($h, 0)];
+        });
+
         return response()->json([
             'totalPatients'    => $totalPatients,
             'totalVisits'      => $totalVisits,
@@ -182,6 +222,11 @@ class AnalyticsController extends Controller
             'visitTrend'       => $visitTrend,
             'patientTrend'     => $patientTrend,
             'forecastTrend'    => $forecastTrend,
+            'demographics'     => [
+                'gender'    => $genderBreakdown,
+                'ageGroups' => $ageGroups,
+            ],
+            'peakHours'        => $peakHoursFormatted,
             'dateRange'        => ['start' => $start->format('M j, Y'), 'end' => $end->format('M j, Y')],
         ]);
     }

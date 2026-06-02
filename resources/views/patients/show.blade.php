@@ -33,7 +33,7 @@
 <div class="page-content">
 
     {{-- Patient Header --}}
-    <div class="card-panel mb-2">
+    <div class="card-panel mb-2" style="border-radius: 15px 15px 0 0;">
         <div class="patient-header-inner">
             <div class="patient-avatar-lg">
                 {{ strtoupper(substr($patient->first_name, 0, 1)) }}
@@ -100,7 +100,7 @@
         <div class="patient-info-toggle"
              data-bs-toggle="collapse"
              data-bs-target="#patientGeneralInfo"
-             style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; padding: 10px 4px; user-select:none;">
+             style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; padding: 10px; user-select:none;">
             <span style="font-size:12.5px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px;">
                 <i class="bi bi-person-lines-fill me-2 text-primary"></i>General Information
             </span>
@@ -109,7 +109,7 @@
 
         <div class="collapse" id="patientGeneralInfo">
             <hr class="mt-0 mb-3">
-            <div class="row g-3" style="font-size:13.5px;">
+            <div class="row g-3" style="font-size:13.5px; padding: 10px;">
 
                 {{-- Personal Details --}}
                 <div class="col-md-4">
@@ -246,10 +246,46 @@
                         <span class="badge bg-secondary">{{ $patient->visits->count() }} visits</span>
                     </div>
                 </div>
-                <div class="card-panel-body p-0">
+                {{-- Doctor-scoped notice --}}
+                @if($visitsScopedToDoctor)
+                <div class="alert alert-info d-flex align-items-center gap-2 rounded-0 mb-0 py-2 px-3" style="font-size:13px; border:none; border-bottom: 1px solid #bee3f8;">
+                    <i class="bi bi-funnel-fill"></i>
+                    Showing only <strong>your visits</strong> with this patient.
+                </div>
+                @endif
+
+                {{-- Timeline filter bar --}}
+                <div class="card-panel-body border-bottom pb-3 pt-3 px-3">
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <input type="date" id="tlFrom" class="form-control form-control-sm" style="width:150px" placeholder="From" onchange="applyTimelineFilter()">
+                        <span class="text-muted small">to</span>
+                        <input type="date" id="tlTo" class="form-control form-control-sm" style="width:150px" placeholder="To" onchange="applyTimelineFilter()">
+                        @if($role === 'secretary')
+                        <select id="tlDoctor" class="form-select form-select-sm" style="width:auto" onchange="applyTimelineFilter()">
+                            <option value="">All Doctors</option>
+                            @foreach($doctors as $doc)
+                                <option value="{{ $doc->id }}">{{ $doc->full_name }}</option>
+                            @endforeach
+                        </select>
+                        @endif
+                        <select id="tlStatus" class="form-select form-select-sm" style="width:12%" onchange="applyTimelineFilter()">
+                            <option value="">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="finalized">Finalized</option>
+                        </select>
+                        <!-- <button class="btn btn-sm btn-primary" onclick="applyTimelineFilter()">Filter</button> -->
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearTimelineFilter()">Clear Filters</button>
+                        <span id="tlCount" class="text-muted small ms-auto"></span>
+                    </div>
+                </div>
+                <div class="card-panel-body p-0" id="visitTimelineBody">
                     @forelse($patient->visits->sortByDesc('visited_at') as $loop_visit => $visit)
                         @php $isFirst = $loop_visit === 0; @endphp
-                        <div class="visit-timeline-item">
+                        <div class="visit-timeline-item"
+                             data-date="{{ $visit->visited_at->format('Y-m-d') }}"
+                             data-doctor="{{ $visit->doctor_id }}"
+                             data-status="{{ $visit->status }}">
                             {{-- Status stripe --}}
                             <div class="visit-status-stripe visit-stripe-{{ $visit->status }}"></div>
 
@@ -2316,7 +2352,56 @@ document.addEventListener('DOMContentLoaded', () => {
         infoPanel.addEventListener('show.bs.collapse', () => infoChevron.classList.add('rotated'));
         infoPanel.addEventListener('hide.bs.collapse', () => infoChevron.classList.remove('rotated'));
     }
+
+    // Initialize visit timeline filter on page load
+    applyTimelineFilter();
 });
+
+// ── Visit Timeline Filter ──────────────────────────────────────
+function applyTimelineFilter() {
+    const from   = document.getElementById('tlFrom')?.value || '';
+    const to     = document.getElementById('tlTo')?.value || '';
+    const doctor = document.getElementById('tlDoctor')?.value || '';
+    const status = document.getElementById('tlStatus')?.value || '';
+
+    const items = document.querySelectorAll('#visitTimelineBody .visit-timeline-item');
+    let visible = 0;
+
+    items.forEach(item => {
+        const date   = item.dataset.date;
+        const doc    = item.dataset.doctor;
+        const stat   = item.dataset.status;
+
+        const afterFrom  = !from   || date >= from;
+        const beforeTo   = !to     || date <= to;
+        const matchDoc   = !doctor || doc === doctor;
+        const matchStat  = !status || stat === status;
+
+        const show = afterFrom && beforeTo && matchDoc && matchStat;
+        item.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+
+    const countEl = document.getElementById('tlCount');
+    const noRes   = document.getElementById('tlNoResults');
+    if (countEl) countEl.textContent = `${visible} visit${visible !== 1 ? 's' : ''} shown`;
+    if (noRes)   noRes.style.display = visible === 0 ? '' : 'none';
+}
+
+function clearTimelineFilter() {
+    const tlFrom = document.getElementById('tlFrom');
+    const tlTo = document.getElementById('tlTo');
+    const tlDoctor = document.getElementById('tlDoctor');
+    const tlStatus = document.getElementById('tlStatus');
+    
+    if (tlFrom) tlFrom.value = '';
+    if (tlTo) tlTo.value = '';
+    if (tlDoctor) tlDoctor.value = '';
+    if (tlStatus) tlStatus.value = '';
+    
+    applyTimelineFilter();
+}
+
 </script>
 @endpush
 

@@ -104,6 +104,11 @@
                                                         <i class="bi bi-shield-fill me-1"></i>MAIN ADMIN
                                                     </span>
                                                 @endif
+                                                @if($user->is_head_doctor)
+                                                    <span class="badge bg-primary" style="font-size:9px">
+                                                        <i class="bi bi-star-fill me-1"></i>HEAD DOCTOR
+                                                    </span>
+                                                @endif
                                             </div>
                                         </div>
                                     </td>
@@ -306,11 +311,21 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
-                            <select name="role" class="form-select" required>
+                            <select name="role" class="form-select" required id="createRole"
+                                    onchange="toggleHeadDoctorOption('create', this.value)">
                                 <option value="">Select role...</option>
                                 <option value="doctor"    {{ old('role') === 'doctor'    ? 'selected' : '' }}>Doctor</option>
                                 <option value="secretary" {{ old('role') === 'secretary' ? 'selected' : '' }}>Secretary</option>
                             </select>
+                        </div>
+                        <div class="col-12" id="createHeadDoctorWrap" style="display:none">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="is_head_doctor" id="createIsHeadDoctor" value="1">
+                                <label class="form-check-label fw-semibold" for="createIsHeadDoctor">
+                                    <i class="bi bi-star-fill text-primary me-1"></i>Designate as Head Doctor
+                                    <span class="text-muted fw-normal small d-block">Head doctors can view all patient records and analytics</span>
+                                </label>
+                            </div>
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
@@ -379,6 +394,15 @@
                         <div class="col-12">
                             <label class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
                             <input type="email" name="email" id="editEmail" class="form-control" required>
+                        </div>
+                        <div class="col-12" id="editHeadDoctorWrap" style="display:none">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="is_head_doctor" id="editIsHeadDoctor" value="1">
+                                <label class="form-check-label fw-semibold" for="editIsHeadDoctor">
+                                    <i class="bi bi-star-fill text-primary me-1"></i>Designate as Head Doctor
+                                    <span class="text-muted fw-normal small d-block">Head doctors can view all patient records and analytics</span>
+                                </label>
+                            </div>
                         </div>
                         <div class="col-12">
                             <div class="section-label-divider">Reset Password <span class="text-muted fw-normal">(optional)</span></div>
@@ -642,6 +666,17 @@ function openEditModal(user) {
     // Set form action to the correct user update route
     document.getElementById('editUserForm').action = `/admin/users/${user.id}`;
 
+    // Show/hide head doctor option based on role
+    const hdWrap = document.getElementById('editHeadDoctorWrap');
+    const hdCheck = document.getElementById('editIsHeadDoctor');
+    if (user.role === 'doctor') {
+        hdWrap.style.display = '';
+        hdCheck.checked = !!user.is_head_doctor;
+    } else {
+        hdWrap.style.display = 'none';
+        hdCheck.checked = false;
+    }
+
     new bootstrap.Modal(document.getElementById('editUserModal')).show();
 }
 
@@ -651,6 +686,11 @@ function confirmDelete(userId, userName) {
     pendingDeleteId = userId;
     document.getElementById('deleteUserName').textContent = userName;
     new bootstrap.Modal(document.getElementById('deleteUserModal')).show();
+}
+
+function toggleHeadDoctorOption(context, role) {
+    const wrap = document.getElementById(context + 'HeadDoctorWrap');
+    if (wrap) wrap.style.display = role === 'doctor' ? '' : 'none';
 }
 
 document.getElementById('confirmDeleteBtn').addEventListener('click', function () {

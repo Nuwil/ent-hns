@@ -61,14 +61,14 @@
                                 @error('gender')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
                             <div class="col-md-3">
-                            <div class="col-md-6">
+                            <div class="col-md-6" style="width: 100%;">
                                 <label class="form-label fw-semibold">Phone Number <span class="text-danger">*</span></label>
                                 <input type="text" name="phone"
                                        class="form-control @error('phone') is-invalid @enderror"
                                        value="{{ old('phone') }}" required placeholder="e.g. 09XX-XXX-XXXX">
                                 @error('phone')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-6" style="width: 100%;">
                                 <label class="form-label fw-semibold">Occupation</label>
                                 <input type="text" name="occupation" class="form-control"
                                        value="{{ old('occupation') }}" placeholder="e.g. Teacher, Engineer">
@@ -109,43 +109,40 @@
                     </div>
                 </div>
             </div>
-
-            {{-- ── MEDICAL INFO SIDEBAR ── --}}
-            <div class="col-lg-4">
-                <div class="card-panel">
-                    <div class="card-panel-header">
-                        <div class="card-panel-title"><i class="bi bi-shield-plus me-2"></i>Medical Info</div>
-                    </div>
-                    <div class="card-panel-body">
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Known Allergies</label>
-                            <textarea name="allergies" class="form-control" rows="2"
-                                      placeholder="e.g. Penicillin, Aspirin, None">{{ old('allergies') }}</textarea>
+        </div>
+    {{-- ── MEDICAL INFO SIDEBAR ── --}}
+                <div class="col-lg-4">
+                    <div class="card-panel">
+                        <div class="card-panel-header">
+                            <div class="card-panel-title"><i class="bi bi-shield-plus me-2"></i>Medical Info</div>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Insurance Information</label>
-                            <input type="text" name="insurance_info" class="form-control"
-                                   value="{{ old('insurance_info') }}" placeholder="Provider / Policy No.">
-                        </div>
-                        <div>
-                            <label class="form-label fw-semibold">Medical & Vaccine History</label>
-                            <textarea name="medical_history" class="form-control" rows="5"
-                                      placeholder="Past illnesses, surgeries, vaccinations...">{{ old('medical_history') }}</textarea>
+                        <div class="card-panel-body">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Known Allergies</label>
+                                <textarea name="allergies" class="form-control" rows="2"
+                                        placeholder="e.g. Penicillin, Aspirin, None">{{ old('allergies') }}</textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Insurance Information</label>
+                                <input type="text" name="insurance_info" class="form-control"
+                                    value="{{ old('insurance_info') }}" placeholder="Provider / Policy No.">
+                            </div>
+                            <div>
+                                <label class="form-label fw-semibold">Medical & Vaccine History</label>
+                                <textarea name="medical_history" class="form-control" rows="5"
+                                        placeholder="Past illnesses, surgeries, vaccinations...">{{ old('medical_history') }}</textarea>
+                            </div>
                         </div>
                     </div>
                 </div>
+            <div class="mt-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-person-check-fill me-1"></i>Register Patient
+                </button>
+                <a href="{{ route("{$role}.patients.index") }}" class="btn btn-outline-secondary">Cancel</a>
             </div>
-
-        </div>
-
-        <div class="mt-4 d-flex gap-2">
-            <button type="submit" class="btn btn-primary">
-                <i class="bi bi-person-check-fill me-1"></i>Register Patient
-            </button>
-            <a href="{{ route("{$role}.patients.index") }}" class="btn btn-outline-secondary">Cancel</a>
-        </div>
-    </form>
-</div>
+        </form>
+    </div>
 
 @push('scripts')
 <script>
