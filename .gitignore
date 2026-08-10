@@ -22,3 +22,11 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Project-specific: keep the repo free of dev-only scratch files.
+# (These previously ended up committed/zipped by mistake — see cleanup notes.)
+composer.phar
+*.zip
+tmp_*.js
+tmp_*.cjs
+tmp_*.py

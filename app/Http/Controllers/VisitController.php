@@ -9,6 +9,23 @@ use App\Models\Visit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
+/**
+ * VisitController
+ *
+ * Drives the two-stage visit workflow described on the Visit model:
+ *
+ *   - storeIntake()/updateIntake() — secretary's half (chief complaint,
+ *     vitals, ENT classification). Leaves status at STATUS_PENDING.
+ *   - store()/edit()/update()      — doctor's half (history, exam findings,
+ *     diagnosis, treatment plan, prescriptions). Moves status to
+ *     STATUS_IN_PROGRESS while being edited.
+ *   - finalize()                   — doctor signs off; status becomes
+ *     STATUS_FINALIZED and the visit becomes read-only (see
+ *     Visit::doctorCanEdit()/secretaryCanEdit()).
+ *
+ * printPrescription()/previewPrescription() render the standalone
+ * prescription PDF/print view from the visit's `prescriptions` JSON array.
+ */
 class VisitController extends Controller
 {
     // ================================================================

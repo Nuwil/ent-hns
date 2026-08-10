@@ -4,6 +4,8 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Database\Seeders\DefaultDataSeeder;
+use Database\Seeders\UserSeeder;
+use Database\Seeders\DummyDataSeeder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -23,13 +25,20 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        $this->call([DefaultDataSeeder::class]);
+        $this->call([
+            DefaultDataSeeder::class,
+            UserSeeder::class,
+            DummyDataSeeder::class,
+        ]);
 
         $this->command->info('✅ Seeder complete. Login credentials:');
         $this->command->table(
             ['Role', 'Email', 'Password'],
             [
                 ['Admin', 'admin@entclinic.com', 'password'],
+                ['Doctor', 'doctor1@entclinic.com', 'password'],
+                ['Doctor', 'doctor2@entclinic.com', 'password'],
+                ['Secretary', 'secretary1@entclinic.com', 'password'],
             ]
         );
     }

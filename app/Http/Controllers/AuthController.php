@@ -7,6 +7,15 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
+/**
+ * AuthController
+ *
+ * Handles login/logout. Authenticates against `email` + `password`
+ * (password is checked via User::getAuthPassword(), which points at the
+ * `password_hash` column). On success, redirects to the role-specific
+ * dashboard via User::dashboardRoute(). Both failed and successful logins
+ * are recorded to ActivityLog for the security audit trail.
+ */
 class AuthController extends Controller
 {
     public function showLogin()

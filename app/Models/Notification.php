@@ -4,6 +4,15 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Notification
+ *
+ * An in-app notification bell entry for a specific user (e.g. "New
+ * appointment request", "Visit finalized"). These are created via
+ * App\Helpers\NotificationHelper — see that class for the actual
+ * "when does X happen" trigger logic; this model is just the storage +
+ * read/unread bookkeeping.
+ */
 class Notification extends Model
 {
     protected $fillable = [

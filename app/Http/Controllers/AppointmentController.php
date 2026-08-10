@@ -10,6 +10,20 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Helpers\NotificationHelper;
 
+/**
+ * AppointmentController
+ *
+ * Manages the Appointment lifecycle: pending → accepted → completed,
+ * or pending/accepted → cancelled (see Appointment::STATUS_* constants).
+ *
+ * The confirm() action (accepting a pending appointment) is the one spot
+ * that flashes the appointment id into the session so the secretary/doctor's
+ * next visit-intake form can link the resulting Visit back to this
+ * appointment — that's how a Visit ends up with a non-null appointment_id.
+ * Fires notifications via App\Helpers\NotificationHelper on key transitions
+ * (booked, accepted, cancelled) so the other side (patient-facing staff,
+ * doctor) sees an in-app alert.
+ */
 class AppointmentController extends Controller
 {
     public function index(Request $request)

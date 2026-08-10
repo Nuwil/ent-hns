@@ -54,10 +54,19 @@ Route::middleware('auth')->group(function () {
         Route::delete('/users/{user}',   [SettingsController::class, 'destroyUser'])->name('users.destroy');
         Route::patch('/users/{user}/toggle', [SettingsController::class, 'toggleUser'])->name('users.toggle');
 
-        // Analytics — admin sees all doctors
+        // Analytics
         Route::get('/analytics',             [AnalyticsController::class, 'index'])->name('analytics');
-        Route::get('/analytics/doctor-data', [AnalyticsController::class, 'doctorData'])->name('analytics.doctor');
         Route::get('/analytics/clinic-data', [AnalyticsController::class, 'clinicData'])->name('analytics.clinic');
+        Route::get('/analytics/report',      [AnalyticsController::class, 'report'])->name('analytics.report');
+        Route::get('/analytics/written-report-data', [AnalyticsController::class, 'writtenReportData'])->name('analytics.written-report');
+
+        // Patient critical info (admin can also update)
+        Route::patch('/patients/{patient}/critical-info', [PatientController::class, 'updateCriticalInfo'])->name('patients.critical-info');
+
+        // Visit archive management
+        Route::get('/patients/{patient}/archived-visits',          [PatientController::class, 'archivedVisits'])->name('patients.archived-visits');
+        Route::patch('/patients/{patient}/visits/{visit}/archive', [PatientController::class, 'archiveVisit'])->name('patients.visits.archive');
+        Route::delete('/patients/{patient}/visits/{visit}',        [PatientController::class, 'destroyVisit'])->name('patients.visits.destroy');
     });
 
     /*
@@ -88,6 +97,14 @@ Route::middleware('auth')->group(function () {
         // Visits — secretary can only store limited intake data (chief complaint from list, vitals)
         Route::post('/patients/{patient}/visits',          [VisitController::class, 'storeIntake'])->name('visits.store');
         Route::put('/patients/{patient}/visits/{visit}',   [VisitController::class, 'updateIntake'])->name('visits.update');
+
+        // Patient critical info
+        Route::patch('/patients/{patient}/critical-info', [PatientController::class, 'updateCriticalInfo'])->name('patients.critical-info');
+
+        // Visit archive management
+        Route::get('/patients/{patient}/archived-visits',          [PatientController::class, 'archivedVisits'])->name('patients.archived-visits');
+        Route::patch('/patients/{patient}/visits/{visit}/archive', [PatientController::class, 'archiveVisit'])->name('patients.visits.archive');
+        Route::delete('/patients/{patient}/visits/{visit}',        [PatientController::class, 'destroyVisit'])->name('patients.visits.destroy');
     });
 
     /*
@@ -130,7 +147,16 @@ Route::middleware('auth')->group(function () {
 
         // Analytics
         Route::get('/analytics',              [AnalyticsController::class, 'index'])->name('analytics');
-        Route::get('/analytics/doctor-data',  [AnalyticsController::class, 'doctorData'])->name('analytics.doctor');
         Route::get('/analytics/clinic-data',  [AnalyticsController::class, 'clinicData'])->name('analytics.clinic');
+        Route::get('/analytics/report',       [AnalyticsController::class, 'report'])->name('analytics.report');
+        Route::get('/analytics/written-report-data', [AnalyticsController::class, 'writtenReportData'])->name('analytics.written-report');
+
+        // Patient critical info
+        Route::patch('/patients/{patient}/critical-info', [PatientController::class, 'updateCriticalInfo'])->name('patients.critical-info');
+
+        // Visit archive management
+        Route::get('/patients/{patient}/archived-visits',          [PatientController::class, 'archivedVisits'])->name('patients.archived-visits');
+        Route::patch('/patients/{patient}/visits/{visit}/archive', [PatientController::class, 'archiveVisit'])->name('patients.visits.archive');
+        Route::delete('/patients/{patient}/visits/{visit}',        [PatientController::class, 'destroyVisit'])->name('patients.visits.destroy');
     });
 });

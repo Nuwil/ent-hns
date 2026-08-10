@@ -6,6 +6,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Request;
 
+/**
+ * ActivityLog
+ *
+ * An append-only audit trail entry. Rather than instantiating this model
+ * directly, call the static ActivityLog::log() helper from anywhere in
+ * the app (controllers, jobs, etc.) — it captures the current
+ * authenticated user, request IP/user-agent, and a human-readable label
+ * for whatever model the action was performed on, so callers don't have
+ * to repeat that boilerplate at every call site.
+ *
+ * Example: ActivityLog::log('patient.viewed', "Viewed patient {$p->full_name}", subject: $p);
+ */
 class ActivityLog extends Model
 {
     protected $fillable = [

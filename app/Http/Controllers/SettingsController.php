@@ -9,6 +9,15 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
+/**
+ * SettingsController
+ *
+ * Admin-only account management: clinic-wide settings (index()/update())
+ * plus full CRUD over staff User accounts (storeUser/updateUser/
+ * destroyUser/toggleUser). The seeded main admin account has
+ * `is_protected = true`, which destroyUser()/toggleUser() explicitly
+ * check for and refuse to touch — see User::$fillable comments.
+ */
 class SettingsController extends Controller
 {
     /**

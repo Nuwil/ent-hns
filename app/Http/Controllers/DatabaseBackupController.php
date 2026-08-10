@@ -7,6 +7,19 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
+/**
+ * DatabaseBackupController
+ *
+ * Admin-only raw database export/import (see routes/web.php — this is
+ * under the admin.* route group). download() streams a full `mysqldump`-
+ * style SQL dump directly to the browser without buffering the whole
+ * thing in memory first (important once the DB grows past a few years
+ * of visit history). import() does the reverse: takes an uploaded .sql
+ * file and executes it statement-by-statement against the live database.
+ *
+ * Because import() can overwrite/destroy live data, both actions are
+ * logged to ActivityLog with 'warning' severity.
+ */
 class DatabaseBackupController extends Controller
 {
     // ──────────────────────────────────────────────────────────────
